@@ -1,0 +1,10 @@
+# Prometheus Operator scrape config (same metrics and alert rules as the local stack).
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: amrutam-api
+spec:
+  selector:
+    matchLabels: { app.kubernetes.io/name: amrutam-api }
+  endpoints:
+    - { port: http, path: /metrics, interval: 15s }

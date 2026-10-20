@@ -14,7 +14,11 @@ FROM node:24-alpine AS runtime
 ENV NODE_ENV=production \
     NODE_OPTIONS="--enable-source-maps --max-old-space-size=384"
 WORKDIR /app
-RUN apk add --no-cache tini && apk upgrade --no-cache
+# Runtime needs only `node`: drop the bundled package managers (smaller attack surface,
+# and their transitive CVEs never reach production).
+RUN apk add --no-cache tini && apk upgrade --no-cache \
+ && rm -rf /usr/local/lib/node_modules/npm /usr/local/lib/node_modules/corepack \
+           /usr/local/bin/npm /usr/local/bin/npx /usr/local/bin/corepack /opt/yarn* /usr/local/bin/yarn*
 COPY --from=build --chown=node:node /app/node_modules ./node_modules
 COPY --from=build --chown=node:node /app/dist ./dist
 COPY --chown=node:node package.json ./

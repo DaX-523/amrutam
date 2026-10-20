@@ -1,0 +1,49 @@
+# Zero-trust networking: deny all, then allow only what each component needs.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny
+spec:
+  podSelector: {}
+  policyTypes: [Ingress, Egress]
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: api-ingress
+spec:
+  podSelector:
+    matchLabels: { app.kubernetes.io/name: amrutam-api }
+  policyTypes: [Ingress]
+  ingress:
+    - ports: [{ port: 3000 }]   # ALB (target-type ip) from within the VPC
+      from: [{ ipBlock: { cidr: 10.20.0.0/16 } }]
+    - ports: [{ port: 3000 }]   # Prometheus scrape
+      from: [{ namespaceSelector: { matchLabels: { kubernetes.io/metadata.name: observability } } }]
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: worker-ingress
+spec:
+  podSelector:
+    matchLabels: { app.kubernetes.io/name: amrutam-worker }
+  policyTypes: [Ingress]
+  ingress:
+    - ports: [{ port: 9464 }]
+      from: [{ namespaceSelector: { matchLabels: { kubernetes.io/metadata.name: observability } } }]
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: app-egress
+spec:
+  podSelector: {}
+  policyTypes: [Egress]
+  egress:
+    - ports: [{ port: 53, protocol: UDP }, { port: 53, protocol: TCP }]   # DNS
+    - to: [{ ipBlock: { cidr: 10.20.0.0/16 } }]                            # RDS 5432, Redis 6379 (database subnets)
+      ports: [{ port: 5432 }, { port: 6379 }]
+    - to: [{ namespaceSelector: { matchLabels: { kubernetes.io/metadata.name: observability } } }]
+      ports: [{ port: 4318 }]
+    - ports: [{ port: 443 }, { port: 587 }]                                # AWS APIs via VPC endpoints, payment provider, SES

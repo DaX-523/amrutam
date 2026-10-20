@@ -1,0 +1,4 @@
+# Accepted risks (reviewed). Each entry needs a justification.
+# EKS worker nodes need egress (via per-AZ NAT) to pull images and reach AWS APIs not covered
+# by VPC endpoints; pod-level egress is restricted by NetworkPolicies (infra/k8s/base/networkpolicy.yaml).
+AVD-AWS-0104

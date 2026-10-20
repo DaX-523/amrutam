@@ -1,0 +1,52 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: amrutam-worker
+  labels: { app.kubernetes.io/name: amrutam-worker, app.kubernetes.io/component: worker }
+spec:
+  replicas: 2
+  selector:
+    matchLabels: { app.kubernetes.io/name: amrutam-worker }
+  template:
+    metadata:
+      labels: { app.kubernetes.io/name: amrutam-worker, app.kubernetes.io/component: worker }
+    spec:
+      serviceAccountName: amrutam-app
+      # BullMQ waits for active jobs on SIGTERM; give long jobs (PDFs) time to finish.
+      terminationGracePeriodSeconds: 60
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        seccompProfile: { type: RuntimeDefault }
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: topology.kubernetes.io/zone
+          whenUnsatisfiable: ScheduleAnyway
+          labelSelector: { matchLabels: { app.kubernetes.io/name: amrutam-worker } }
+      containers:
+        - name: worker
+          image: amrutam-api
+          args: ["node", "--import", "./dist/infra/telemetry.js", "dist/worker.js"]
+          ports:
+            - { name: metrics, containerPort: 9464 }
+          envFrom:
+            - configMapRef: { name: amrutam-config }
+            - secretRef: { name: amrutam-secrets }
+          env:
+            - { name: SERVICE_NAME, value: amrutam-worker }
+          resources:
+            requests: { cpu: 200m, memory: 256Mi }
+            limits: { memory: 512Mi }
+          livenessProbe:
+            httpGet: { path: /health/live, port: metrics }
+            periodSeconds: 15
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: { drop: ["ALL"] }
+          volumeMounts:
+            - { name: tmp, mountPath: /tmp }
+      volumes:
+        - name: tmp
+          emptyDir: { sizeLimit: 128Mi }

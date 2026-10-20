@@ -1,0 +1,171 @@
+# CI/CD — runs entirely on free GitHub Actions minutes and free/OSS tooling.
+# Nothing here talks to a paid cloud account: images go to GHCR (free), the deploy
+# stage renders + validates manifests (dry run) instead of applying to a real cluster.
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  NODE_VERSION: "24"
+
+jobs:
+  quality:
+    name: lint · typecheck · openapi drift
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: "${{ env.NODE_VERSION }}", cache: npm }
+      - run: npm ci
+      - run: npm run lint
+      - run: npm run typecheck
+      - run: npx prettier --check "src/**/*.ts" "tests/**/*.ts"
+      - name: OpenAPI spec is up to date
+        run: npm run openapi:export && git diff --exit-code docs/openapi.yaml
+
+  test:
+    name: unit + integration tests
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env: { POSTGRES_USER: test, POSTGRES_PASSWORD: test, POSTGRES_DB: test }
+        ports: ["5432:5432"]
+        options: --health-cmd "pg_isready -U test" --health-interval 5s --health-retries 20
+      redis:
+        image: redis:7-alpine
+        ports: ["6379:6379"]
+        options: --health-cmd "redis-cli ping" --health-interval 5s --health-retries 20
+    env:
+      TEST_DATABASE_URL: postgres://test:test@localhost:5432/test
+      TEST_REDIS_URL: redis://localhost:6379
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: "${{ env.NODE_VERSION }}", cache: npm }
+      - run: npm ci
+      - run: npm run test:coverage
+      - uses: actions/upload-artifact@v4
+        with: { name: coverage, path: coverage/lcov.info, retention-days: 7 }
+
+  security:
+    name: dependency · secret · IaC scanning
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with: { fetch-depth: 0 }
+      - uses: actions/setup-node@v4
+        with: { node-version: "${{ env.NODE_VERSION }}" }
+      - name: npm audit (production deps, fail on high)
+        run: npm audit --omit=dev --audit-level=high
+      - name: OSV-Scanner (lockfile vs OSV database)
+        run: docker run --rm -v "$PWD:/src" ghcr.io/google/osv-scanner:v2.0.2 scan source --lockfile=/src/package-lock.json
+      - name: Gitleaks (secrets in history)
+        run: docker run --rm -v "$PWD:/repo" zricethezav/gitleaks:v8.24.0 git /repo --config /repo/.gitleaks.toml --redact --verbose
+      - name: Trivy IaC misconfiguration scan (Terraform, K8s, Dockerfile)
+        uses: aquasecurity/trivy-action@0.30.0
+        with:
+          scan-type: config
+          scan-ref: infra
+          severity: CRITICAL,HIGH
+          exit-code: "1"
+          trivyignores: .trivyignore
+
+  codeql:
+    name: CodeQL SAST
+    runs-on: ubuntu-latest
+    permissions: { security-events: write, contents: read, actions: read }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: github/codeql-action/init@v3
+        with: { languages: javascript-typescript, queries: security-extended }
+      - uses: github/codeql-action/analyze@v3
+
+  iac:
+    name: terraform validate · k8s manifests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: hashicorp/setup-terraform@v3
+        with: { terraform_version: 1.9.8 }
+      - name: terraform fmt + validate (no backend, no AWS credentials)
+        working-directory: infra/terraform
+        run: |
+          terraform fmt -check -recursive
+          terraform init -backend=false -input=false
+          terraform validate
+      - name: Render & validate Kubernetes manifests
+        run: |
+          for overlay in staging prod; do
+            kubectl kustomize infra/k8s/overlays/$overlay > /tmp/$overlay.yaml
+            docker run --rm -i ghcr.io/yannh/kubeconform:v0.6.7 -strict -summary -kubernetes-version 1.31.0 \
+              -schema-location default \
+              -schema-location 'https://raw.githubusercontent.com/datreeio/CRDs-catalog/main/{{.Group}}/{{.ResourceKind}}_{{.ResourceAPIVersion}}.json' \
+              < /tmp/$overlay.yaml
+          done
+
+  image:
+    name: build · scan · publish image
+    runs-on: ubuntu-latest
+    needs: [quality, test, security]
+    permissions: { contents: read, packages: write }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: infra/docker/Dockerfile
+          load: true
+          tags: amrutam-api:${{ github.sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+      - name: Trivy image scan (OS + npm packages)
+        uses: aquasecurity/trivy-action@0.30.0
+        with:
+          image-ref: amrutam-api:${{ github.sha }}
+          severity: CRITICAL,HIGH
+          ignore-unfixed: true
+          exit-code: "1"
+      - name: Push to GHCR (main only)
+        if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+        run: |
+          echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
+          IMAGE=ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/amrutam-api
+          docker tag amrutam-api:${{ github.sha }} $IMAGE:${{ github.sha }}
+          docker tag amrutam-api:${{ github.sha }} $IMAGE:latest
+          docker push $IMAGE:${{ github.sha }}
+          docker push $IMAGE:latest
+
+  deploy:
+    name: deploy (dry run)
+    runs-on: ubuntu-latest
+    needs: [image, iac, codeql]
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    environment: staging
+    steps:
+      - uses: actions/checkout@v4
+      - name: Pin the immutable image digest/tag into the overlay
+        working-directory: infra/k8s/overlays/staging
+        run: |
+          IMAGE=ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/amrutam-api
+          kustomize edit set image amrutam-api=$IMAGE:${{ github.sha }}   # kustomize ships with ubuntu runners
+      - name: Render release manifests
+        run: kubectl kustomize infra/k8s/overlays/staging | tee release.yaml | grep -E "image:" | sort -u
+      # With a real cluster (not provisioned: zero-cost assessment) the steps would be:
+      #   1. kubectl apply -f release.yaml --selector app.kubernetes.io/name=amrutam-migrate && kubectl wait --for=condition=complete job/amrutam-migrate
+      #   2. kubectl apply -f release.yaml
+      #   3. kubectl rollout status deploy/amrutam-api deploy/amrutam-worker --timeout=5m (auto-rollback on failure)
+      - uses: actions/upload-artifact@v4
+        with: { name: release-manifests, path: release.yaml, retention-days: 30 }

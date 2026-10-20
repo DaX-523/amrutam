@@ -141,7 +141,8 @@ export async function buildApp(c: Container) {
         headers.required = [...(headers.required ?? []), 'idempotency-key'];
         schema.headers = headers;
       }
-      return out;
+      // Routes mounted at '/' under a prefix answer on both '/v1/x' and '/v1/x/'; document the canonical one.
+      return { ...out, url: out.url.length > 1 ? out.url.replace(/\/$/, '') : out.url };
     },
     transformObject: jsonSchemaTransformObject,
   });
@@ -167,7 +168,10 @@ export async function buildApp(c: Container) {
       await v1.register(usersRoutes({ users: c.users }), { prefix: '/me' });
       await v1.register(doctorsRoutes({ doctors: c.doctors }), { prefix: '/doctors' });
       await v1.register(availabilityRoutes({ availability: c.availability }), { prefix: '/doctors' });
-      await v1.register(bookingsRoutes({ bookings: c.bookings, rateLimitMax: c.config.BOOKING_RATE_LIMIT_MAX }), { prefix: '/bookings' });
+      await v1.register(
+        bookingsRoutes({ bookings: c.bookings, rateLimitMax: c.config.BOOKING_RATE_LIMIT_MAX }),
+        { prefix: '/bookings' },
+      );
       await v1.register(consultationsRoutes({ consultations: c.consultations }), {
         prefix: '/consultations',
       });

@@ -1,0 +1,26 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: amrutam-staging
+resources: [../../base]
+patches:
+  - target: { kind: Namespace, name: amrutam }
+    patch: |-
+      - { op: replace, path: /metadata/name, value: amrutam-staging }
+  - target: { kind: Deployment, name: amrutam-api }
+    patch: |-
+      - { op: replace, path: /spec/replicas, value: 2 }
+  - target: { kind: HorizontalPodAutoscaler, name: amrutam-api }
+    patch: |-
+      - { op: replace, path: /spec/minReplicas, value: 2 }
+      - { op: replace, path: /spec/maxReplicas, value: 4 }
+  - target: { kind: PodDisruptionBudget, name: amrutam-api }
+    patch: |-
+      - { op: replace, path: /spec/minAvailable, value: 1 }
+  - target: { kind: ConfigMap, name: amrutam-config }
+    patch: |-
+      - { op: replace, path: /data/S3_BUCKET, value: amrutam-prescriptions-staging }
+      - { op: replace, path: /data/MOCK_CHECKOUT_ENABLED, value: "true" }
+      - { op: replace, path: /data/OTEL_TRACES_SAMPLER_ARG, value: "1.0" }
+  - target: { kind: ExternalSecret, name: amrutam-secrets }
+    patch: |-
+      - { op: replace, path: /spec/dataFrom/0/extract/key, value: amrutam/staging/app }

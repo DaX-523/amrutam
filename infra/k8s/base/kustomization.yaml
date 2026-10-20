@@ -1,0 +1,26 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: amrutam
+labels:
+  - pairs: { app.kubernetes.io/part-of: amrutam-telemed }
+    includeSelectors: false
+resources:
+  - namespace.yaml
+  - serviceaccount.yaml
+  - configmap.yaml
+  - externalsecret.yaml
+  - api-deployment.yaml
+  - api-service.yaml
+  - api-hpa.yaml
+  - api-pdb.yaml
+  - worker-deployment.yaml
+  - worker-hpa.yaml
+  - worker-pdb.yaml
+  - migrate-job.yaml
+  - ingress.yaml
+  - networkpolicy.yaml
+  - servicemonitor.yaml
+images:
+  - name: amrutam-api
+    newName: ghcr.io/amrutam/amrutam-api
+    newTag: latest

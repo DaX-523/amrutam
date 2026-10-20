@@ -1,0 +1,7 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources: [../../base]
+images:
+  - name: amrutam-api
+    newName: ghcr.io/amrutam/amrutam-api
+    newTag: latest   # CI pins the immutable git SHA: kustomize edit set image amrutam-api=...:<sha>

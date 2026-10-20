@@ -1,0 +1,8 @@
+# Gitleaks with the default ruleset, allow-listing the documented DEV-ONLY sample keys
+# in .env.example (they protect nothing; real secrets live in AWS Secrets Manager).
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Documented local-development sample values"
+paths = ['''\.env\.example$''', '''infra/compose/seaweedfs/s3\.json$''', '''docker-compose\.yml$''']
