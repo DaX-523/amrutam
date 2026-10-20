@@ -37,7 +37,6 @@ export async function buildApp(c: Container) {
     loggerInstance: c.logger,
     trustProxy: c.config.TRUST_PROXY,
     bodyLimit: 256 * 1024,
-    disableRequestLogging: false,
     requestIdLogLabel: 'request_id',
     genReqId: (req) => {
       const incoming = req.headers['x-request-id'];

@@ -1,3 +1,4 @@
+import { trace } from '@opentelemetry/api';
 import fp from 'fastify-plugin';
 import type { FastifyPluginAsync } from 'fastify';
 import type { Metrics } from '../infra/metrics.js';
@@ -6,6 +7,13 @@ import type { Metrics } from '../infra/metrics.js';
 const observabilityPlugin: FastifyPluginAsync<{ metrics: Metrics }> = async (app, { metrics }) => {
   app.addHook('onRequest', async (request, reply) => {
     void reply.header('x-request-id', request.id);
+    // Name the HTTP server span by route template ("POST /v1/bookings"), not raw URL.
+    const span = trace.getActiveSpan();
+    const route = request.routeOptions.url;
+    if (span && route) {
+      span.updateName(`${request.method} ${route}`);
+      span.setAttributes({ 'http.route': route, 'app.request_id': request.id });
+    }
   });
 
   app.addHook('onResponse', async (request, reply) => {

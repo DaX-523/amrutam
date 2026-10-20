@@ -1,6 +1,7 @@
 # Local stack — 100% free/open-source images, nothing cloud-billed.
-#   docker compose up -d            # infra + api + worker
-#   open http://localhost:3000/docs (Swagger) · http://localhost:8025 (Mailpit)
+#   docker compose up -d --build    # infra + api + worker + observability
+#   Swagger http://localhost:3000/docs · Grafana http://localhost:3001 · Jaeger http://localhost:16686
+#   Prometheus http://localhost:9090 · Mailpit http://localhost:8025
 x-app-env: &app-env
   NODE_ENV: production
   LOG_LEVEL: info
@@ -96,10 +97,73 @@ services:
     environment:
       <<: *app-env
       SERVICE_NAME: amrutam-worker
+      HEALTH_PORT: "9464"
     depends_on:
       migrate: { condition: service_completed_successfully }
       redis: { condition: service_healthy }
       seaweedfs: { condition: service_started }
+
+  # ───────────────────────── observability (all OSS) ─────────────────────────
+  otel-collector:
+    image: otel/opentelemetry-collector-contrib:0.120.0
+    command: ["--config=/etc/otelcol/config.yaml"]
+    volumes: ["./infra/compose/otel/collector.yaml:/etc/otelcol/config.yaml:ro"]
+    ports: ["4318:4318"]
+    depends_on: [jaeger]
+
+  jaeger:
+    image: jaegertracing/all-in-one:1.65.0
+    environment: { COLLECTOR_OTLP_ENABLED: "true" }
+    ports: ["16686:16686"]
+
+  prometheus:
+    image: prom/prometheus:v3.2.1
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.retention.time=7d
+      - --web.enable-lifecycle
+    volumes:
+      - ./infra/compose/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./infra/compose/prometheus/rules:/etc/prometheus/rules:ro
+    ports: ["9090:9090"]
+
+  postgres-exporter:
+    image: prometheuscommunity/postgres-exporter:v0.17.1
+    environment:
+      DATA_SOURCE_NAME: postgresql://amrutam:amrutam@postgres:5432/amrutam?sslmode=disable
+    depends_on: [postgres]
+
+  redis-exporter:
+    image: oliver006/redis_exporter:v1.69.0
+    environment: { REDIS_ADDR: redis://redis:6379 }
+    depends_on: [redis]
+
+  loki:
+    image: grafana/loki:3.4.2
+    command: ["-config.file=/etc/loki/loki.yaml"]
+    volumes: ["./infra/compose/loki/loki.yaml:/etc/loki/loki.yaml:ro"]
+    ports: ["3100:3100"]
+
+  alloy:
+    image: grafana/alloy:v1.7.1
+    command: ["run", "/etc/alloy/config.alloy"]
+    volumes:
+      - ./infra/compose/alloy/config.alloy:/etc/alloy/config.alloy:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    depends_on: [loki]
+
+  grafana:
+    image: grafana/grafana:11.5.2
+    environment:
+      GF_AUTH_ANONYMOUS_ENABLED: "true"
+      GF_AUTH_ANONYMOUS_ORG_ROLE: Viewer
+      GF_SECURITY_ADMIN_PASSWORD: amrutam-dev
+      GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH: /var/lib/grafana/dashboards/amrutam-overview.json
+    volumes:
+      - ./infra/compose/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./infra/compose/grafana/dashboards:/var/lib/grafana/dashboards:ro
+    ports: ["3001:3000"]
+    depends_on: [prometheus, loki, jaeger]
 
 volumes:
   pgdata:

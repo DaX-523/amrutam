@@ -48,16 +48,18 @@ r=$(req GET "/doctors?specialty=womens-health&sort=rating&limit=3")
 body_of "$r" | jq -c '.items[] | {displayName, specialties, feePaise, rating, nextAvailableAt}'
 curl -s "$V1/doctors?q=digestive&limit=2" | jq -c '{names: [.items[].displayName], nextCursor}'
 
-bold "2. Doctor logs in with password + TOTP (MFA mandatory for doctors)"
-DOC_EMAIL=dr.1@amrutam.local
-DOC_TOKEN=$(login_mfa $DOC_EMAIL 'Doctor@Amrutam2026'); ok "doctor authenticated (amr=pwd+otp)"
-DOC_ID=$(curl -s "$V1/me" -H "authorization: Bearer $DOC_TOKEN" | jq -r .id)
-
-bold "3. Doctor publishes a slot starting in ~7 minutes (so the demo can start it now)"
+bold "2+3. Doctor logs in with password + TOTP (MFA mandatory) and publishes a slot starting in ~7 min"
 FROM=$(node -e 'const d=new Date(Date.now()+7*60e3);d.setSeconds(0,0);console.log(d.toISOString())')
 TO=$(node -e "console.log(new Date(new Date('$FROM').getTime()+15*60e3).toISOString())")
-r=$(req POST /doctors/me/slots "$DOC_TOKEN" "{\"from\":\"$FROM\",\"to\":\"$TO\",\"slotMinutes\":15}" "$(key slots)")
-body_of "$r" | jq -c . ; [[ $(status_of "$r") == 201 ]] && ok "slots published"
+START_N=$(( RANDOM % 12 + 1 ))
+for i in $(seq 0 11); do
+  N=$(( (START_N + i - 1) % 12 + 1 ))
+  DOC_TOKEN=$(login_mfa "dr.$N@amrutam.local" 'Doctor@Amrutam2026')
+  r=$(req POST /doctors/me/slots "$DOC_TOKEN" "{\"from\":\"$FROM\",\"to\":\"$TO\",\"slotMinutes\":15}" "$(key slots)")
+  [[ $(body_of "$r" | jq .created) == 1 ]] && break   # else this doctor already has a slot then; try the next one
+done
+ok "dr.$N authenticated (amr=pwd+otp)"; body_of "$r" | jq -c .
+DOC_ID=$(curl -s "$V1/me" -H "authorization: Bearer $DOC_TOKEN" | jq -r .id)
 SLOT_ID=$(curl -s "$V1/doctors/$DOC_ID/slots?from=$FROM" | jq -r '.[0].id')
 ok "bookable slot $SLOT_ID"
 

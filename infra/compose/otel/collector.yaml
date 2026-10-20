@@ -1,0 +1,38 @@
+# OpenTelemetry Collector: apps export OTLP here; the collector batches, protects itself
+# with a memory limiter and forwards to Jaeger. Swapping the backend (Tempo, Honeycomb,
+# Datadog...) is a config change, not a code change.
+receivers:
+  otlp:
+    protocols:
+      http: { endpoint: 0.0.0.0:4318 }
+      grpc: { endpoint: 0.0.0.0:4317 }
+
+processors:
+  memory_limiter:
+    check_interval: 1s
+    limit_percentage: 80
+    spike_limit_percentage: 20
+  batch:
+    send_batch_size: 1024
+    timeout: 2s
+  # Strip anything that may look like credentials before it leaves the cluster.
+  attributes/scrub:
+    actions:
+      - { key: http.request.header.authorization, action: delete }
+      - { key: db.statement, action: hash }
+
+exporters:
+  otlp/jaeger:
+    endpoint: jaeger:4317
+    tls: { insecure: true }
+
+extensions:
+  health_check: { endpoint: 0.0.0.0:13133 }
+
+service:
+  extensions: [health_check]
+  pipelines:
+    traces:
+      receivers: [otlp]
+      processors: [memory_limiter, attributes/scrub, batch]
+      exporters: [otlp/jaeger]
