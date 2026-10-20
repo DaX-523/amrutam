@@ -1,0 +1,9 @@
+{
+  "identities": [
+    {
+      "name": "amrutam-dev",
+      "credentials": [{ "accessKey": "amrutam", "secretKey": "amrutam-dev-secret" }],
+      "actions": ["Admin", "Read", "Write", "List", "Tagging"]
+    }
+  ]
+}

@@ -22,7 +22,8 @@
     "test:unit": "vitest run tests/unit",
     "test:integration": "vitest run tests/integration",
     "test:coverage": "vitest run --coverage",
-    "openapi:export": "tsx scripts/export-openapi.ts"
+    "openapi:export": "tsx scripts/export-openapi.ts",
+    "totp": "tsx scripts/totp.ts"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1153.0",
