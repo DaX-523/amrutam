@@ -64,10 +64,13 @@ export class AnalyticsService {
       .execute();
 
     const sum = (metric: string, dimension?: string) =>
-      rows.filter((r) => r.metric === metric && (dimension === undefined || r.dimension === dimension)).reduce((a, r) => a + Number(r.value), 0);
+      rows
+        .filter((r) => r.metric === metric && (dimension === undefined || r.dimension === dimension))
+        .reduce((a, r) => a + Number(r.value), 0);
     const byDimension = (metric: string) => {
       const acc: Record<string, number> = {};
-      for (const r of rows.filter((x) => x.metric === metric)) acc[r.dimension] = (acc[r.dimension] ?? 0) + Number(r.value);
+      for (const r of rows.filter((x) => x.metric === metric))
+        acc[r.dimension] = (acc[r.dimension] ?? 0) + Number(r.value);
       return acc;
     };
     const total = sum('consultations_total');
@@ -99,7 +102,9 @@ export class AnalyticsService {
         revenuePaise: sum2(rows, day, 'revenue_paise'),
         bookingsCreated: sum2(rows, day, 'bookings_created'),
       })),
-      computedAt: rows.length ? new Date(Math.max(...rows.map((r) => new Date(r.computed_at).getTime()))).toISOString() : null,
+      computedAt: rows.length
+        ? new Date(Math.max(...rows.map((r) => new Date(r.computed_at).getTime()))).toISOString()
+        : null,
     };
   }
 }

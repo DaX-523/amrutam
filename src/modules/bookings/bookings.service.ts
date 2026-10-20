@@ -4,7 +4,7 @@ import type { RequestCtx } from '../../domain/context.js';
 import { Errors } from '../../domain/errors.js';
 import type { Cache } from '../../infra/cache.js';
 import type { FieldCipher } from '../../infra/crypto.js';
-import { withTransaction, type DbHandles } from '../../infra/db.js';
+import { withTransaction, type DbHandles, type Tx } from '../../infra/db.js';
 import type { Logger } from '../../infra/logger.js';
 import type { Metrics } from '../../infra/metrics.js';
 import { publishEvent } from '../../infra/outbox.js';
@@ -56,7 +56,9 @@ export class BookingsService {
         .where('status', '=', 'pending_payment')
         .executeTakeFirstOrThrow();
       if (Number(activeHolds.n) >= MAX_ACTIVE_HOLDS_PER_PATIENT) {
-        return { error: Errors.conflict('TOO_MANY_PENDING_BOOKINGS', 'Complete or cancel pending bookings first') };
+        return {
+          error: Errors.conflict('TOO_MANY_PENDING_BOOKINGS', 'Complete or cancel pending bookings first'),
+        };
       }
 
       // The single statement that decides who wins a slot. Row-level lock + predicate
@@ -76,9 +78,19 @@ export class BookingsService {
         .where('s.starts_at', '>', sql<Date>`now() + make_interval(mins => ${config.MIN_BOOKING_LEAD_MIN})`)
         .where('d.verified_at', 'is not', null)
         .where('d.user_id', '!=', patientId)
-        .returning(['s.id', 's.doctor_id', 's.starts_at', 's.ends_at', 's.hold_expires_at', 'd.fee_paise', 'd.display_name'])
+        .returning([
+          's.id',
+          's.doctor_id',
+          's.starts_at',
+          's.ends_at',
+          's.hold_expires_at',
+          'd.fee_paise',
+          'd.display_name',
+        ])
         .executeTakeFirst();
-      if (!slot) return { error: await this.unavailableReason(input.slotId) };
+      // Diagnose on the SAME connection: borrowing a second pool connection while holding one
+      // starves the pool under contention (found by the 50-way race test).
+      if (!slot) return { error: await this.unavailableReason(tx, input.slotId) };
 
       const consultation = await tx
         .insertInto('consultations')
@@ -118,10 +130,19 @@ export class BookingsService {
         .returningAll()
         .executeTakeFirstOrThrow();
 
-      await publishEvent(tx, { type: 'consultation', id: consultation.id }, { type: 'booking.held', consultationId: consultation.id });
+      await publishEvent(
+        tx,
+        { type: 'consultation', id: consultation.id },
+        { type: 'booking.held', consultationId: consultation.id },
+      );
       await this.d.audit.record(
         ctx,
-        { action: 'booking.created', resourceType: 'consultation', resourceId: consultation.id, metadata: { slotId: slot.id, doctorId: slot.doctor_id } },
+        {
+          action: 'booking.created',
+          resourceType: 'consultation',
+          resourceId: consultation.id,
+          metadata: { slotId: slot.id, doctorId: slot.doctor_id },
+        },
         tx,
       );
       return { slot, consultation, payment };
@@ -144,17 +165,37 @@ export class BookingsService {
         idempotencyKey: payment.id,
       }));
     } catch (err) {
-      this.d.logger.error({ err, consultationId: consultation.id }, 'payment order creation failed; compensating');
-      await this.compensateReservation(consultation.id, slot.id, patientId, 'payment_gateway_unavailable', ctx);
+      this.d.logger.error(
+        { err, consultationId: consultation.id },
+        'payment order creation failed; compensating',
+      );
+      await this.compensateReservation(
+        consultation.id,
+        slot.id,
+        patientId,
+        'payment_gateway_unavailable',
+        ctx,
+      );
       this.d.metrics.bookings.inc({ outcome: 'gateway_failed' });
-      throw Errors.unavailable('PAYMENT_GATEWAY_UNAVAILABLE', 'Payment provider unavailable, please retry shortly', 10);
+      throw Errors.unavailable(
+        'PAYMENT_GATEWAY_UNAVAILABLE',
+        'Payment provider unavailable, please retry shortly',
+        10,
+      );
     }
 
-    await this.d.db.writer.updateTable('payments').set({ provider_order_id: orderId }).where('id', '=', payment.id).execute();
+    await this.d.db.writer
+      .updateTable('payments')
+      .set({ provider_order_id: orderId })
+      .where('id', '=', payment.id)
+      .execute();
     this.d.metrics.bookings.inc({ outcome: 'held' });
 
     return {
-      consultation: toConsultationDto({ ...consultation, doctor_name: slot.display_name, payment_status: payment.status }, this.d.cipher),
+      consultation: toConsultationDto(
+        { ...consultation, doctor_name: slot.display_name, payment_status: payment.status },
+        this.d.cipher,
+      ),
       payment: {
         id: payment.id,
         status: payment.status,
@@ -168,7 +209,13 @@ export class BookingsService {
   }
 
   /** C1: semantic rollback of T1. Lock order: slot -> consultation -> payment. */
-  private async compensateReservation(consultationId: string, slotId: string, patientId: string, reason: string, ctx: RequestCtx) {
+  private async compensateReservation(
+    consultationId: string,
+    slotId: string,
+    patientId: string,
+    reason: string,
+    ctx: RequestCtx,
+  ) {
     await withTransaction(this.d.db.writer, async (tx) => {
       await tx
         .updateTable('availability_slots')
@@ -179,7 +226,12 @@ export class BookingsService {
         .execute();
       await tx
         .updateTable('consultations')
-        .set({ status: 'cancelled', cancelled_at: new Date(), cancel_reason: reason, version: sql<number>`version + 1` })
+        .set({
+          status: 'cancelled',
+          cancelled_at: new Date(),
+          cancel_reason: reason,
+          version: sql<number>`version + 1`,
+        })
         .where('id', '=', consultationId)
         .where('status', '=', 'pending_payment')
         .execute();
@@ -189,19 +241,30 @@ export class BookingsService {
         .where('consultation_id', '=', consultationId)
         .where('status', '=', 'initiated')
         .execute();
-      await this.d.audit.record(ctx, { action: 'booking.compensated', resourceType: 'consultation', resourceId: consultationId, outcome: 'failure', metadata: { reason } }, tx);
+      await this.d.audit.record(
+        ctx,
+        {
+          action: 'booking.compensated',
+          resourceType: 'consultation',
+          resourceId: consultationId,
+          outcome: 'failure',
+          metadata: { reason },
+        },
+        tx,
+      );
     });
   }
 
-  private async unavailableReason(slotId: string) {
-    const s = await this.d.db.writer
+  private async unavailableReason(tx: Tx, slotId: string) {
+    const s = await tx
       .selectFrom('availability_slots as s')
       .innerJoin('doctors as d', 'd.user_id', 's.doctor_id')
       .select(['s.status', 's.starts_at', 'd.verified_at'])
       .where('s.id', '=', slotId)
       .executeTakeFirst();
     if (!s || !s.verified_at) return Errors.notFound('Slot');
-    if (s.status !== 'available') return Errors.conflict('SLOT_UNAVAILABLE', 'This slot has just been taken; please pick another');
+    if (s.status !== 'available')
+      return Errors.conflict('SLOT_UNAVAILABLE', 'This slot has just been taken; please pick another');
     return Errors.conflict('SLOT_TOO_SOON', 'This slot starts too soon to be booked');
   }
 }

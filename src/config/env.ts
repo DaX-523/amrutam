@@ -12,7 +12,10 @@ const keyring = (minBytes: number, encoding: 'utf8' | 'base64') =>
     .min(1)
     .transform((raw, ctx) => {
       const ring = new Map<string, Buffer>();
-      for (const entry of raw.split(',').map((s) => s.trim()).filter(Boolean)) {
+      for (const entry of raw
+        .split(',')
+        .map((s) => s.trim())
+        .filter(Boolean)) {
         const idx = entry.indexOf(':');
         if (idx <= 0) {
           ctx.addIssue({ code: 'custom', message: `keyring entry must be "<id>:<secret>"` });
@@ -29,9 +32,7 @@ const keyring = (minBytes: number, encoding: 'utf8' | 'base64') =>
       return ring;
     });
 
-const bool = z
-  .enum(['true', 'false', '1', '0'])
-  .transform((v) => v === 'true' || v === '1');
+const bool = z.enum(['true', 'false', '1', '0']).transform((v) => v === 'true' || v === '1');
 
 const EnvSchema = z
   .object({
@@ -56,7 +57,11 @@ const EnvSchema = z
     JWT_ISSUER: z.string().default('amrutam-api'),
     JWT_AUDIENCE: z.string().default('amrutam-clients'),
     ACCESS_TOKEN_TTL_SEC: z.coerce.number().int().positive().default(900),
-    REFRESH_TOKEN_TTL_SEC: z.coerce.number().int().positive().default(60 * 60 * 24 * 30),
+    REFRESH_TOKEN_TTL_SEC: z.coerce
+      .number()
+      .int()
+      .positive()
+      .default(60 * 60 * 24 * 30),
     MFA_CHALLENGE_TTL_SEC: z.coerce.number().int().positive().default(300),
     MFA_ISSUER: z.string().default('Amrutam'),
     MAX_FAILED_LOGINS: z.coerce.number().int().positive().default(5),
@@ -69,10 +74,16 @@ const EnvSchema = z
     CORS_ORIGINS: z
       .string()
       .default('http://localhost:5173')
-      .transform((s) => s.split(',').map((o) => o.trim()).filter(Boolean)),
+      .transform((s) =>
+        s
+          .split(',')
+          .map((o) => o.trim())
+          .filter(Boolean),
+      ),
     RATE_LIMIT_MAX: z.coerce.number().int().positive().default(300),
     RATE_LIMIT_WINDOW_MS: z.coerce.number().int().positive().default(60_000),
     AUTH_RATE_LIMIT_MAX: z.coerce.number().int().positive().default(10),
+    BOOKING_RATE_LIMIT_MAX: z.coerce.number().int().positive().default(20),
 
     SLOT_HOLD_TTL_SEC: z.coerce.number().int().positive().default(600),
     MIN_BOOKING_LEAD_MIN: z.coerce.number().int().nonnegative().default(5),

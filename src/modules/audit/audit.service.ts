@@ -30,9 +30,7 @@ export interface AuditQuery {
  * Hash-chaining and immutability are enforced by the database (migration 0002).
  */
 export class AuditService {
-  constructor(
-    private readonly deps: { db: DB; logger: Logger },
-  ) {}
+  constructor(private readonly deps: { db: DB; logger: Logger }) {}
 
   /**
    * Pass `tx` to make the audit record atomic with the state change it describes.

@@ -10,14 +10,19 @@ import { register } from 'node:module';
 if (process.env.OTEL_ENABLED === 'true' || process.env.OTEL_ENABLED === '1') {
   register('@opentelemetry/instrumentation/hook.mjs', import.meta.url);
 
-  const [{ NodeSDK }, { getNodeAutoInstrumentations }, { OTLPTraceExporter }, { resourceFromAttributes }, semconv] =
-    await Promise.all([
-      import('@opentelemetry/sdk-node'),
-      import('@opentelemetry/auto-instrumentations-node'),
-      import('@opentelemetry/exporter-trace-otlp-http'),
-      import('@opentelemetry/resources'),
-      import('@opentelemetry/semantic-conventions'),
-    ]);
+  const [
+    { NodeSDK },
+    { getNodeAutoInstrumentations },
+    { OTLPTraceExporter },
+    { resourceFromAttributes },
+    semconv,
+  ] = await Promise.all([
+    import('@opentelemetry/sdk-node'),
+    import('@opentelemetry/auto-instrumentations-node'),
+    import('@opentelemetry/exporter-trace-otlp-http'),
+    import('@opentelemetry/resources'),
+    import('@opentelemetry/semantic-conventions'),
+  ]);
 
   const endpoint = process.env.OTEL_EXPORTER_OTLP_ENDPOINT ?? 'http://localhost:4318';
   const sdk = new NodeSDK({
@@ -33,7 +38,8 @@ if (process.env.OTEL_ENABLED === 'true' || process.env.OTEL_ENABLED === '1') {
         '@opentelemetry/instrumentation-dns': { enabled: false },
         '@opentelemetry/instrumentation-net': { enabled: false },
         '@opentelemetry/instrumentation-http': {
-          ignoreIncomingRequestHook: (req) => ['/metrics', '/health/live', '/health/ready'].includes(req.url ?? ''),
+          ignoreIncomingRequestHook: (req) =>
+            ['/metrics', '/health/live', '/health/ready'].includes(req.url ?? ''),
         },
       }),
     ],

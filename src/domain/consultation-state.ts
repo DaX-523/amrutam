@@ -32,7 +32,11 @@ export function assertTransition(from: ConsultationStatus, to: ConsultationStatu
   }
 }
 
-export const TERMINAL_STATUSES: ReadonlySet<ConsultationStatus> = new Set(['completed', 'cancelled', 'no_show']);
+export const TERMINAL_STATUSES: ReadonlySet<ConsultationStatus> = new Set([
+  'completed',
+  'cancelled',
+  'no_show',
+]);
 
 /** Doctors may open the consultation room shortly before the scheduled time. */
 export const EARLY_START_MINUTES = 10;

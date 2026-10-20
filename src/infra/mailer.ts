@@ -9,7 +9,12 @@ export class SmtpMailer implements Mailer {
   private readonly transport: Transporter;
 
   constructor(private readonly opts: { host: string; port: number; from: string }) {
-    this.transport = nodemailer.createTransport({ host: opts.host, port: opts.port, secure: false, connectionTimeout: 5_000 });
+    this.transport = nodemailer.createTransport({
+      host: opts.host,
+      port: opts.port,
+      secure: false,
+      connectionTimeout: 5_000,
+    });
   }
 
   async send(msg: { to: string; subject: string; text: string }) {

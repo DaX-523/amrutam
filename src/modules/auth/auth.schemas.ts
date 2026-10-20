@@ -1,6 +1,9 @@
 import { z } from 'zod';
 
-const Email = z.email().max(254).transform((e) => e.toLowerCase());
+const Email = z
+  .email()
+  .max(254)
+  .transform((e) => e.toLowerCase());
 // NIST 800-63B: length over composition rules; upper bound protects the hasher.
 const Password = z.string().min(12, 'Password must be at least 12 characters').max(128);
 const Otp = z.string().regex(/^\d{6}$/, 'Must be a 6-digit code');

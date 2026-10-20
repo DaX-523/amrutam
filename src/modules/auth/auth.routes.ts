@@ -58,7 +58,12 @@ export const authRoutes =
       '/mfa/verify',
       {
         config: { public: true, idempotency: false, ...strict },
-        schema: { tags, summary: 'Complete login with a TOTP code', body: MfaVerifyBody, response: { 200: LoginResponse, ...errorResponses } },
+        schema: {
+          tags,
+          summary: 'Complete login with a TOTP code',
+          body: MfaVerifyBody,
+          response: { 200: LoginResponse, ...errorResponses },
+        },
       },
       async (req) => auth.verifyMfaLogin(req.body.mfaToken, req.body.code, requestCtx(req)),
     );
@@ -67,7 +72,12 @@ export const authRoutes =
       '/refresh',
       {
         config: { public: true, idempotency: false, ...strict },
-        schema: { tags, summary: 'Rotate refresh token', body: RefreshBody, response: { 200: TokenPair, ...errorResponses } },
+        schema: {
+          tags,
+          summary: 'Rotate refresh token',
+          body: RefreshBody,
+          response: { 200: TokenPair, ...errorResponses },
+        },
       },
       async (req) => auth.refresh(req.body.refreshToken, requestCtx(req)),
     );
@@ -76,7 +86,12 @@ export const authRoutes =
       '/logout',
       {
         config: { public: true, idempotency: false },
-        schema: { tags, summary: 'Revoke the session (refresh token family)', body: RefreshBody, response: { 204: z.null(), ...errorResponses } },
+        schema: {
+          tags,
+          summary: 'Revoke the session (refresh token family)',
+          body: RefreshBody,
+          response: { 204: z.null(), ...errorResponses },
+        },
       },
       async (req, reply) => {
         await auth.logout(req.body.refreshToken, requestCtx(req));

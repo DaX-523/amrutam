@@ -26,9 +26,10 @@ const authPlugin: FastifyPluginAsync<{ tokens: TokenService; revocations: Sessio
     const header = request.headers.authorization;
     if (header) {
       const [scheme, token] = header.split(' ');
-      if (scheme?.toLowerCase() !== 'bearer' || !token) throw Errors.unauthorized('Malformed Authorization header');
+      if (scheme?.toLowerCase() !== 'bearer' || !token)
+        throw Errors.unauthorized('Malformed Authorization header');
       const claims = await tokens.verifyAccess(token);
-      if (!claims || (await revocations.isRevoked(claims.sub, claims.iat ?? 0))) {
+      if (!claims || (await revocations.isRevoked(claims.sub, claims.sid, claims.iat ?? 0))) {
         throw Errors.unauthorized('Invalid or expired access token', 'INVALID_TOKEN');
       }
       request.actor = { id: claims.sub, role: claims.role, amr: claims.amr, sessionId: claims.sid };

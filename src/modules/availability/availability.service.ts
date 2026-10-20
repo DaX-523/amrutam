@@ -14,7 +14,9 @@ const PUBLIC_SLOTS_TTL_SEC = 15;
 
 export const slotsCacheNs = (doctorId: string) => `slots:${doctorId}`;
 
-export const toSlotDto = (s: Pick<Slot, 'id' | 'doctor_id' | 'starts_at' | 'ends_at' | 'status'>): SlotDto => ({
+export const toSlotDto = (
+  s: Pick<Slot, 'id' | 'doctor_id' | 'starts_at' | 'ends_at' | 'status'>,
+): SlotDto => ({
   id: s.id,
   doctorId: s.doctor_id,
   startsAt: iso(s.starts_at)!,
@@ -42,7 +44,11 @@ export class AvailabilityService {
   constructor(private readonly d: Deps) {}
 
   /** Generates contiguous slots; overlapping ones are skipped by the EXCLUDE constraint. */
-  async createSlots(doctorId: string, input: { from: string; to: string; slotMinutes: number }, ctx: RequestCtx) {
+  async createSlots(
+    doctorId: string,
+    input: { from: string; to: string; slotMinutes: number },
+    ctx: RequestCtx,
+  ) {
     const { from, to } = resolveWindow(input.from, input.to);
     if (from.getTime() < Date.now()) throw Errors.badRequest('PAST_SLOT', 'Slots must start in the future');
     const stepMs = input.slotMinutes * 60_000;
@@ -55,13 +61,31 @@ export class AvailabilityService {
       throw Errors.badRequest('TOO_MANY_SLOTS', `At most ${MAX_SLOTS_PER_REQUEST} slots per request`);
     }
 
-    const doctor = await this.d.db.writer.selectFrom('doctors').select('user_id').where('user_id', '=', doctorId).executeTakeFirst();
+    const doctor = await this.d.db.writer
+      .selectFrom('doctors')
+      .select('user_id')
+      .where('user_id', '=', doctorId)
+      .executeTakeFirst();
     if (!doctor) throw Errors.conflict('DOCTOR_PROFILE_MISSING', 'Create your doctor profile first');
 
     const created = await withTransaction(this.d.db.writer, async (tx) => {
       // ON CONFLICT DO NOTHING (no target) also covers exclusion-constraint violations.
-      const rows = await tx.insertInto('availability_slots').values(slots).onConflict((oc) => oc.doNothing()).returning('id').execute();
-      await this.d.audit.record(ctx, { action: 'slots.created', resourceType: 'doctor', resourceId: doctorId, metadata: { count: rows.length } }, tx);
+      const rows = await tx
+        .insertInto('availability_slots')
+        .values(slots)
+        .onConflict((oc) => oc.doNothing())
+        .returning('id')
+        .execute();
+      await this.d.audit.record(
+        ctx,
+        {
+          action: 'slots.created',
+          resourceType: 'doctor',
+          resourceId: doctorId,
+          metadata: { count: rows.length },
+        },
+        tx,
+      );
       return rows.length;
     });
     await this.d.cache.invalidate(slotsCacheNs(doctorId));
@@ -104,7 +128,12 @@ export class AvailabilityService {
     });
   }
 
-  async setSlotStatus(doctorId: string, slotId: string, status: 'available' | 'blocked', ctx: RequestCtx): Promise<SlotDto> {
+  async setSlotStatus(
+    doctorId: string,
+    slotId: string,
+    status: 'available' | 'blocked',
+    ctx: RequestCtx,
+  ): Promise<SlotDto> {
     const row = await withTransaction(this.d.db.writer, async (tx) => {
       const updated = await tx
         .updateTable('availability_slots')
@@ -115,7 +144,15 @@ export class AvailabilityService {
         .returning(['id', 'doctor_id', 'starts_at', 'ends_at', 'status'])
         .executeTakeFirst();
       if (!updated) return null;
-      await this.d.audit.record(ctx, { action: `slot.${status === 'blocked' ? 'blocked' : 'unblocked'}`, resourceType: 'slot', resourceId: slotId }, tx);
+      await this.d.audit.record(
+        ctx,
+        {
+          action: `slot.${status === 'blocked' ? 'blocked' : 'unblocked'}`,
+          resourceType: 'slot',
+          resourceId: slotId,
+        },
+        tx,
+      );
       return updated;
     });
     if (!row) throw await this.slotError(doctorId, slotId);
@@ -131,10 +168,17 @@ export class AvailabilityService {
         .where('doctor_id', '=', doctorId)
         .where('status', 'in', ['available', 'blocked'])
         // Slots referenced by (even cancelled) consultations are kept for history.
-        .where(({ not, exists, selectFrom }) => not(exists(selectFrom('consultations').select('id').where('slot_id', '=', slotId))))
+        .where(({ not, exists, selectFrom }) =>
+          not(exists(selectFrom('consultations').select('id').where('slot_id', '=', slotId))),
+        )
         .returning('id')
         .executeTakeFirst();
-      if (r) await this.d.audit.record(ctx, { action: 'slot.deleted', resourceType: 'slot', resourceId: slotId }, tx);
+      if (r)
+        await this.d.audit.record(
+          ctx,
+          { action: 'slot.deleted', resourceType: 'slot', resourceId: slotId },
+          tx,
+        );
       return Boolean(r);
     });
     if (!deleted) throw await this.slotError(doctorId, slotId);
@@ -142,7 +186,11 @@ export class AvailabilityService {
   }
 
   private async slotError(doctorId: string, slotId: string) {
-    const slot = await this.d.db.writer.selectFrom('availability_slots').select(['status', 'doctor_id']).where('id', '=', slotId).executeTakeFirst();
+    const slot = await this.d.db.writer
+      .selectFrom('availability_slots')
+      .select(['status', 'doctor_id'])
+      .where('id', '=', slotId)
+      .executeTakeFirst();
     if (!slot || slot.doctor_id !== doctorId) return Errors.notFound('Slot');
     return Errors.conflict('SLOT_NOT_MODIFIABLE', `Slot is ${slot.status} and cannot be modified`);
   }

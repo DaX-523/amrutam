@@ -49,7 +49,11 @@ export async function relayOutbox(c: Container, batchSize = 100): Promise<number
     await tx
       .updateTable('outbox_events')
       .set({ published_at: sql<Date>`now()`, attempts: sql<number>`attempts + 1` })
-      .where('id', 'in', rows.map((r) => r.id))
+      .where(
+        'id',
+        'in',
+        rows.map((r) => r.id),
+      )
       .execute();
     return rows.length;
   });

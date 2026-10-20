@@ -1,4 +1,10 @@
-import { CreateBucketCommand, GetObjectCommand, HeadBucketCommand, PutObjectCommand, S3Client } from '@aws-sdk/client-s3';
+import {
+  CreateBucketCommand,
+  GetObjectCommand,
+  HeadBucketCommand,
+  PutObjectCommand,
+  S3Client,
+} from '@aws-sdk/client-s3';
 
 /** Object storage port (S3 in AWS, MinIO locally — same API, zero cost in dev). */
 export interface ObjectStorage {
@@ -10,7 +16,15 @@ export interface ObjectStorage {
 export class S3Storage implements ObjectStorage {
   private readonly client: S3Client;
 
-  constructor(private readonly opts: { bucket: string; region: string; endpoint?: string; accessKeyId?: string; secretAccessKey?: string }) {
+  constructor(
+    private readonly opts: {
+      bucket: string;
+      region: string;
+      endpoint?: string;
+      accessKeyId?: string;
+      secretAccessKey?: string;
+    },
+  ) {
     this.client = new S3Client({
       region: opts.region,
       ...(opts.endpoint ? { endpoint: opts.endpoint, forcePathStyle: true } : {}),

@@ -136,9 +136,14 @@ const idempotencyPlugin: FastifyPluginAsync<{
     request.idempotency = null;
     try {
       if (reply.statusCode >= 500 || NOT_STORED.has(reply.statusCode)) {
-        await db.deleteFrom('idempotency_keys').where('scope', '=', idem.scope).where('key', '=', idem.key).execute();
+        await db
+          .deleteFrom('idempotency_keys')
+          .where('scope', '=', idem.scope)
+          .where('key', '=', idem.key)
+          .execute();
       } else {
-        const body = typeof payload === 'string' ? payload : payload == null ? '' : null;
+        const body =
+          typeof payload === 'string' ? payload : payload === null || payload === undefined ? '' : null;
         await db
           .updateTable('idempotency_keys')
           .set({

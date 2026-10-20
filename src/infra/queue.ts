@@ -20,7 +20,8 @@ export const DEFAULT_JOB_OPTIONS: JobsOptions = {
 export type Queues = Record<QueueName, Queue>;
 
 export function createQueues(connection: RedisOptions, prefix = 'amrutam'): Queues {
-  const make = (name: QueueName) => new Queue(name, { connection, prefix, defaultJobOptions: DEFAULT_JOB_OPTIONS });
+  const make = (name: QueueName) =>
+    new Queue(name, { connection, prefix, defaultJobOptions: DEFAULT_JOB_OPTIONS });
   return {
     notifications: make(QUEUES.notifications),
     'prescription-pdf': make(QUEUES.prescriptionPdf),

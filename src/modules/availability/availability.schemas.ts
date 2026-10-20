@@ -28,6 +28,10 @@ export const UpdateSlotBody = z.object({ status: z.enum(['available', 'blocked']
 export const DoctorSlotParams = z.object({ id: z.uuid() });
 export const SlotIdParams = z.object({ slotId: z.uuid() });
 
-export const CreateSlotsResponse = z.object({ requested: z.number().int(), created: z.number().int(), skippedOverlapping: z.number().int() });
+export const CreateSlotsResponse = z.object({
+  requested: z.number().int(),
+  created: z.number().int(),
+  skippedOverlapping: z.number().int(),
+});
 
 export type SlotDto = z.infer<typeof SlotSchema>;

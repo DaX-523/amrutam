@@ -37,10 +37,11 @@ export async function buildApp(c: Container) {
     loggerInstance: c.logger,
     trustProxy: c.config.TRUST_PROXY,
     bodyLimit: 256 * 1024,
-    requestIdLogLabel: 'request_id',
     genReqId: (req) => {
       const incoming = req.headers['x-request-id'];
-      return typeof incoming === 'string' && REQUEST_ID_PATTERN.test(incoming) ? incoming : crypto.randomUUID();
+      return typeof incoming === 'string' && REQUEST_ID_PATTERN.test(incoming)
+        ? incoming
+        : crypto.randomUUID();
     },
     routerOptions: { maxParamLength: 200 },
     ajv: { customOptions: { removeAdditional: 'all' } },
@@ -61,7 +62,13 @@ export async function buildApp(c: Container) {
     origin: c.config.CORS_ORIGINS,
     methods: ['GET', 'POST', 'PATCH', 'PUT', 'DELETE'],
     allowedHeaders: ['authorization', 'content-type', 'idempotency-key', 'x-request-id'],
-    exposedHeaders: ['x-request-id', 'idempotent-replayed', 'retry-after', 'ratelimit-limit', 'ratelimit-remaining'],
+    exposedHeaders: [
+      'x-request-id',
+      'idempotent-replayed',
+      'retry-after',
+      'ratelimit-limit',
+      'ratelimit-remaining',
+    ],
     maxAge: 600,
   });
 
@@ -111,9 +118,17 @@ export async function buildApp(c: Container) {
     transform: (input) => {
       const out = jsonSchemaTransform(input);
       const optedOut = input.route.config?.idempotency === false;
-      if (input.url.startsWith('/v1') && MUTATING.has(String(input.route.method).toLowerCase()) && !optedOut) {
+      if (
+        input.url.startsWith('/v1') &&
+        MUTATING.has(String(input.route.method).toLowerCase()) &&
+        !optedOut
+      ) {
         const schema = out.schema as Record<string, unknown>;
-        const headers = (schema.headers as { type: string; properties: Record<string, unknown>; required?: string[] }) ?? {
+        const headers = (schema.headers as {
+          type: string;
+          properties: Record<string, unknown>;
+          required?: string[];
+        }) ?? {
           type: 'object',
           properties: {},
         };
@@ -146,18 +161,30 @@ export async function buildApp(c: Container) {
 
   await app.register(
     async (v1) => {
-      await v1.register(authRoutes({ auth: c.auth, authRateLimitMax: c.config.AUTH_RATE_LIMIT_MAX }), { prefix: '/auth' });
+      await v1.register(authRoutes({ auth: c.auth, authRateLimitMax: c.config.AUTH_RATE_LIMIT_MAX }), {
+        prefix: '/auth',
+      });
       await v1.register(usersRoutes({ users: c.users }), { prefix: '/me' });
       await v1.register(doctorsRoutes({ doctors: c.doctors }), { prefix: '/doctors' });
       await v1.register(availabilityRoutes({ availability: c.availability }), { prefix: '/doctors' });
-      await v1.register(bookingsRoutes({ bookings: c.bookings }), { prefix: '/bookings' });
-      await v1.register(consultationsRoutes({ consultations: c.consultations }), { prefix: '/consultations' });
-      await v1.register(prescriptionsRoutes({ prescriptions: c.prescriptions }), { prefix: '/consultations' });
+      await v1.register(bookingsRoutes({ bookings: c.bookings, rateLimitMax: c.config.BOOKING_RATE_LIMIT_MAX }), { prefix: '/bookings' });
+      await v1.register(consultationsRoutes({ consultations: c.consultations }), {
+        prefix: '/consultations',
+      });
+      await v1.register(prescriptionsRoutes({ prescriptions: c.prescriptions }), {
+        prefix: '/consultations',
+      });
       await v1.register(
-        paymentsRoutes({ payments: c.payments, mockCheckoutEnabled: c.config.MOCK_CHECKOUT_ENABLED && c.config.PAYMENT_PROVIDER === 'mock' }),
+        paymentsRoutes({
+          payments: c.payments,
+          mockCheckoutEnabled: c.config.MOCK_CHECKOUT_ENABLED && c.config.PAYMENT_PROVIDER === 'mock',
+        }),
         { prefix: '/payments' },
       );
-      await v1.register(adminRoutes({ admin: c.admin, audit: c.audit, analytics: c.analytics, queues: c.queues }), { prefix: '/admin' });
+      await v1.register(
+        adminRoutes({ admin: c.admin, audit: c.audit, analytics: c.analytics, queues: c.queues }),
+        { prefix: '/admin' },
+      );
     },
     { prefix: '/v1' },
   );

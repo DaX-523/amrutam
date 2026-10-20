@@ -76,14 +76,17 @@ const errorHandlerPlugin: FastifyPluginAsync = async (app) => {
   });
 
   app.setNotFoundHandler((request, reply) =>
-    reply.code(404).type('application/problem+json').send({
-      type: 'https://docs.amrutam.local/errors/not_found',
-      title: 'NOT_FOUND',
-      status: 404,
-      code: 'NOT_FOUND',
-      detail: `Route ${request.method} ${request.url.split('?')[0]} not found`,
-      requestId: request.id,
-    }),
+    reply
+      .code(404)
+      .type('application/problem+json')
+      .send({
+        type: 'https://docs.amrutam.local/errors/not_found',
+        title: 'NOT_FOUND',
+        status: 404,
+        code: 'NOT_FOUND',
+        detail: `Route ${request.method} ${request.url.split('?')[0]} not found`,
+        requestId: request.id,
+      }),
   );
 };
 

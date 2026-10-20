@@ -21,14 +21,22 @@ const PaymentSchema = z
   .meta({ id: 'Payment' });
 
 export const paymentsRoutes =
-  ({ payments, mockCheckoutEnabled }: { payments: PaymentsService; mockCheckoutEnabled: boolean }): FastifyPluginAsyncZod =>
+  ({
+    payments,
+    mockCheckoutEnabled,
+  }: {
+    payments: PaymentsService;
+    mockCheckoutEnabled: boolean;
+  }): FastifyPluginAsyncZod =>
   async (app) => {
     const tags = ['Payments'];
 
     // Webhook needs the exact raw bytes for HMAC verification, so parse JSON as a string
     // in this encapsulated context only.
     await app.register(async (hook) => {
-      hook.addContentTypeParser('application/json', { parseAs: 'string' }, (_req, body, done) => done(null, body));
+      hook.addContentTypeParser('application/json', { parseAs: 'string' }, (_req, body, done) =>
+        done(null, body),
+      );
       hook.post(
         '/webhook',
         {
@@ -42,7 +50,11 @@ export const paymentsRoutes =
         },
         async (req) => {
           const signature = req.headers[WEBHOOK_SIGNATURE_HEADER];
-          return payments.handleWebhook(String(req.body ?? ''), typeof signature === 'string' ? signature : undefined, requestCtx(req));
+          return payments.handleWebhook(
+            String(req.body ?? ''),
+            typeof signature === 'string' ? signature : undefined,
+            requestCtx(req),
+          );
         },
       );
     });
@@ -51,7 +63,13 @@ export const paymentsRoutes =
       '/:id',
       {
         config: { permission: 'bookings:create' },
-        schema: { tags, security: [{ bearerAuth: [] }], summary: 'Payment status (own)', params: UuidParam, response: { 200: PaymentSchema, ...errorResponses } },
+        schema: {
+          tags,
+          security: [{ bearerAuth: [] }],
+          summary: 'Payment status (own)',
+          params: UuidParam,
+          response: { 200: PaymentSchema, ...errorResponses },
+        },
       },
       async (req) => payments.getForPatient(req.actor!.id, req.params.id),
     );
@@ -67,7 +85,10 @@ export const paymentsRoutes =
             summary: 'DEV ONLY: simulate the provider checkout (sends a signed webhook)',
             params: UuidParam,
             body: z.object({ outcome: z.enum(['success', 'failure']).default('success') }).strict(),
-            response: { 200: z.object({ webhookStatus: z.number().int(), outcome: z.string() }), ...errorResponses },
+            response: {
+              200: z.object({ webhookStatus: z.number().int(), outcome: z.string() }),
+              ...errorResponses,
+            },
           },
         },
         async (req) => {

@@ -24,7 +24,13 @@ export const availabilityRoutes =
       '/:id/slots',
       {
         config: { public: true },
-        schema: { tags, summary: 'Bookable slots of a doctor', params: DoctorSlotParams, querystring: SlotRangeQuery, response: { 200: z.array(SlotSchema), ...errorResponses } },
+        schema: {
+          tags,
+          summary: 'Bookable slots of a doctor',
+          params: DoctorSlotParams,
+          querystring: SlotRangeQuery,
+          response: { 200: z.array(SlotSchema), ...errorResponses },
+        },
       },
       async (req) => availability.listAvailable(req.params.id, req.query),
     );
@@ -33,16 +39,29 @@ export const availabilityRoutes =
       '/me/slots',
       {
         config: { permission: 'slots:manage_own' },
-        schema: { tags, security, summary: 'Publish availability (generates contiguous slots)', body: CreateSlotsBody, response: { 201: CreateSlotsResponse, ...errorResponses } },
+        schema: {
+          tags,
+          security,
+          summary: 'Publish availability (generates contiguous slots)',
+          body: CreateSlotsBody,
+          response: { 201: CreateSlotsResponse, ...errorResponses },
+        },
       },
-      async (req, reply) => reply.code(201).send(await availability.createSlots(req.actor!.id, req.body, requestCtx(req))),
+      async (req, reply) =>
+        reply.code(201).send(await availability.createSlots(req.actor!.id, req.body, requestCtx(req))),
     );
 
     app.get(
       '/me/slots',
       {
         config: { permission: 'slots:manage_own' },
-        schema: { tags, security, summary: 'Own slots in all states', querystring: SlotRangeQuery, response: { 200: z.array(SlotSchema), ...errorResponses } },
+        schema: {
+          tags,
+          security,
+          summary: 'Own slots in all states',
+          querystring: SlotRangeQuery,
+          response: { 200: z.array(SlotSchema), ...errorResponses },
+        },
       },
       async (req) => availability.listOwnSlots(req.actor!.id, req.query),
     );
@@ -51,16 +70,30 @@ export const availabilityRoutes =
       '/me/slots/:slotId',
       {
         config: { permission: 'slots:manage_own' },
-        schema: { tags, security, summary: 'Block / unblock a free slot', params: SlotIdParams, body: UpdateSlotBody, response: { 200: SlotSchema, ...errorResponses } },
+        schema: {
+          tags,
+          security,
+          summary: 'Block / unblock a free slot',
+          params: SlotIdParams,
+          body: UpdateSlotBody,
+          response: { 200: SlotSchema, ...errorResponses },
+        },
       },
-      async (req) => availability.setSlotStatus(req.actor!.id, req.params.slotId, req.body.status, requestCtx(req)),
+      async (req) =>
+        availability.setSlotStatus(req.actor!.id, req.params.slotId, req.body.status, requestCtx(req)),
     );
 
     app.delete(
       '/me/slots/:slotId',
       {
         config: { permission: 'slots:manage_own' },
-        schema: { tags, security, summary: 'Delete a free slot', params: SlotIdParams, response: { 204: z.null(), ...errorResponses } },
+        schema: {
+          tags,
+          security,
+          summary: 'Delete a free slot',
+          params: SlotIdParams,
+          response: { 204: z.null(), ...errorResponses },
+        },
       },
       async (req, reply) => {
         await availability.deleteSlot(req.actor!.id, req.params.slotId, requestCtx(req));

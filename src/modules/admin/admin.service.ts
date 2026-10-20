@@ -17,7 +17,18 @@ export class AdminService {
     let query = this.d.db.reader
       .selectFrom('doctors as d')
       .innerJoin('users as u', 'u.id', 'd.user_id')
-      .select(['d.user_id', 'd.display_name', 'd.registration_number', 'd.specialties', 'd.city', 'd.verified_at', 'd.created_at', 'u.email', 'u.status', 'u.mfa_enabled'])
+      .select([
+        'd.user_id',
+        'd.display_name',
+        'd.registration_number',
+        'd.specialties',
+        'd.city',
+        'd.verified_at',
+        'd.created_at',
+        'u.email',
+        'u.status',
+        'u.mfa_enabled',
+      ])
       .orderBy('d.created_at', 'desc')
       .orderBy('d.user_id', 'desc')
       .limit(q.limit + 1);
@@ -26,7 +37,10 @@ export class AdminService {
     const cursor = decodeCursor(q.cursor, CursorSchema);
     if (cursor) {
       query = query.where((eb) =>
-        eb.or([eb('d.created_at', '<', new Date(cursor.t)), eb.and([eb('d.created_at', '=', new Date(cursor.t)), eb('d.user_id', '<', cursor.id)])]),
+        eb.or([
+          eb('d.created_at', '<', new Date(cursor.t)),
+          eb.and([eb('d.created_at', '=', new Date(cursor.t)), eb('d.user_id', '<', cursor.id)]),
+        ]),
       );
     }
     const rows = await query.execute();
@@ -45,7 +59,10 @@ export class AdminService {
         verifiedAt: iso(r.verified_at),
         createdAt: iso(r.created_at)!,
       })),
-      nextCursor: rows.length > q.limit && last ? encodeCursor({ t: new Date(last.created_at).toISOString(), id: last.user_id }) : null,
+      nextCursor:
+        rows.length > q.limit && last
+          ? encodeCursor({ t: new Date(last.created_at).toISOString(), id: last.user_id })
+          : null,
     };
   }
 
@@ -58,11 +75,20 @@ export class AdminService {
         .where('verified_at', 'is', null)
         .returning('user_id')
         .executeTakeFirst();
-      if (r) await this.d.audit.record(ctx, { action: 'admin.doctor_verified', resourceType: 'doctor', resourceId: doctorId }, tx);
+      if (r)
+        await this.d.audit.record(
+          ctx,
+          { action: 'admin.doctor_verified', resourceType: 'doctor', resourceId: doctorId },
+          tx,
+        );
       return r;
     });
     if (!updated) {
-      const exists = await this.d.db.writer.selectFrom('doctors').select('verified_at').where('user_id', '=', doctorId).executeTakeFirst();
+      const exists = await this.d.db.writer
+        .selectFrom('doctors')
+        .select('verified_at')
+        .where('user_id', '=', doctorId)
+        .executeTakeFirst();
       if (!exists) throw Errors.notFound('Doctor');
       throw Errors.conflict('ALREADY_VERIFIED', 'Doctor is already verified');
     }
@@ -71,7 +97,8 @@ export class AdminService {
   }
 
   async setUserStatus(adminId: string, userId: string, status: 'active' | 'suspended', ctx: RequestCtx) {
-    if (adminId === userId) throw Errors.conflict('SELF_MODIFICATION', 'Admins cannot change their own status');
+    if (adminId === userId)
+      throw Errors.conflict('SELF_MODIFICATION', 'Admins cannot change their own status');
     const r = await withTransaction(this.d.db.writer, async (tx) => {
       const u = await tx
         .updateTable('users')
@@ -80,7 +107,16 @@ export class AdminService {
         .where('status', '!=', 'deleted')
         .returning(['id', 'role'])
         .executeTakeFirst();
-      if (u) await this.d.audit.record(ctx, { action: status === 'suspended' ? 'admin.user_suspended' : 'admin.user_reactivated', resourceType: 'user', resourceId: userId }, tx);
+      if (u)
+        await this.d.audit.record(
+          ctx,
+          {
+            action: status === 'suspended' ? 'admin.user_suspended' : 'admin.user_reactivated',
+            resourceType: 'user',
+            resourceId: userId,
+          },
+          tx,
+        );
       return u;
     });
     if (!r) throw Errors.notFound('User');

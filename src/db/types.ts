@@ -7,12 +7,7 @@ export type UserRole = 'patient' | 'doctor' | 'admin';
 export type UserStatus = 'active' | 'suspended' | 'deleted';
 export type SlotStatus = 'available' | 'held' | 'booked' | 'blocked';
 export type ConsultationStatus =
-  | 'pending_payment'
-  | 'confirmed'
-  | 'in_progress'
-  | 'completed'
-  | 'cancelled'
-  | 'no_show';
+  'pending_payment' | 'confirmed' | 'in_progress' | 'completed' | 'cancelled' | 'no_show';
 export type PaymentStatus = 'initiated' | 'captured' | 'failed' | 'expired' | 'refund_pending' | 'refunded';
 export type ArtifactStatus = 'pending' | 'ready' | 'failed';
 

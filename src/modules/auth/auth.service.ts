@@ -73,7 +73,13 @@ export class AuthService {
         .execute();
       await this.d.audit.record(
         { ...ctx, actor: null },
-        { action: 'user.registered', resourceType: 'user', resourceId: u.id, actorId: u.id, metadata: { role: u.role } },
+        {
+          action: 'user.registered',
+          resourceType: 'user',
+          resourceId: u.id,
+          actorId: u.id,
+          metadata: { role: u.role },
+        },
         tx,
       );
       return u;
@@ -83,7 +89,11 @@ export class AuthService {
   }
 
   async login(email: string, password: string, ctx: RequestCtx): Promise<LoginResult> {
-    const user = await this.d.db.writer.selectFrom('users').selectAll().where('email', '=', email).executeTakeFirst();
+    const user = await this.d.db.writer
+      .selectFrom('users')
+      .selectAll()
+      .where('email', '=', email)
+      .executeTakeFirst();
     if (!user || user.status === 'deleted') {
       await this.d.passwords.verifyDummy(password);
       return this.failLogin(ctx, null, 'unknown_user');
@@ -146,7 +156,10 @@ export class AuthService {
       throw Errors.unauthorized('MFA challenge expired or invalid', 'INVALID_MFA_CHALLENGE');
     }
     if (user.locked_until && user.locked_until > new Date()) {
-      throw Errors.locked('Account temporarily locked', Math.ceil((user.locked_until.getTime() - Date.now()) / 1000));
+      throw Errors.locked(
+        'Account temporarily locked',
+        Math.ceil((user.locked_until.getTime() - Date.now()) / 1000),
+      );
     }
     if (!(await this.checkTotp(user, code))) {
       await this.registerFailure(user);
@@ -170,7 +183,17 @@ export class AuthService {
       const row = await tx
         .selectFrom('refresh_tokens as rt')
         .innerJoin('users as u', 'u.id', 'rt.user_id')
-        .select(['rt.id', 'rt.user_id', 'rt.family_id', 'rt.expires_at', 'rt.revoked_at', 'rt.replaced_by', 'u.role', 'u.status', 'u.mfa_enabled'])
+        .select([
+          'rt.id',
+          'rt.user_id',
+          'rt.family_id',
+          'rt.expires_at',
+          'rt.revoked_at',
+          'rt.replaced_by',
+          'u.role',
+          'u.status',
+          'u.mfa_enabled',
+        ])
         .where('rt.token_hash', '=', hash)
         .forUpdate('rt')
         .executeTakeFirst();
@@ -187,7 +210,13 @@ export class AuthService {
             .execute();
           await this.d.audit.record(
             ctx,
-            { action: 'auth.refresh_reuse_detected', resourceType: 'session', resourceId: row.family_id, actorId: row.user_id, outcome: 'denied' },
+            {
+              action: 'auth.refresh_reuse_detected',
+              resourceType: 'session',
+              resourceId: row.family_id,
+              actorId: row.user_id,
+              outcome: 'denied',
+            },
             tx,
           );
           return { kind: 'reuse' as const };
@@ -218,7 +247,12 @@ export class AuthService {
         .execute();
       // The session keeps the assurance level it was established with.
       const amr: AuthMethod[] = row.mfa_enabled ? ['pwd', 'otp'] : ['pwd'];
-      const accessToken = await this.d.tokens.signAccess({ sub: row.user_id, role: row.role, amr, sid: row.family_id });
+      const accessToken = await this.d.tokens.signAccess({
+        sub: row.user_id,
+        role: row.role,
+        amr,
+        sid: row.family_id,
+      });
       return { kind: 'ok' as const, pair: this.pair(accessToken, next) };
     });
 
@@ -237,24 +271,36 @@ export class AuthService {
       .where('token_hash', '=', sha256Hex(refreshToken))
       .executeTakeFirst();
     if (!row) return;
+    await this.d.revocations.revokeSessions([row.family_id]);
     await this.d.db.writer
       .updateTable('refresh_tokens')
       .set({ revoked_at: new Date() })
       .where('family_id', '=', row.family_id)
       .where('revoked_at', 'is', null)
       .execute();
-    await this.d.audit.recordSafe(ctx, { action: 'auth.logout', resourceType: 'session', resourceId: row.family_id, actorId: row.user_id });
+    await this.d.audit.recordSafe(ctx, {
+      action: 'auth.logout',
+      resourceType: 'session',
+      resourceId: row.family_id,
+      actorId: row.user_id,
+    });
   }
 
-  /** Revokes refresh tokens (durable) and outstanding access tokens (Redis watermark). */
-  async revokeAllSessions(userId: string): Promise<void> {
-    await this.d.revocations.revokeUser(userId);
-    await this.d.db.writer
+  /**
+   * Revokes every session: refresh tokens durably in Postgres, access tokens via Redis.
+   * `mode: 'user'` also blocks any token issued up to now (suspension/deletion);
+   * `mode: 'sessions'` kills only existing sessions so a replacement can be issued at once.
+   */
+  async revokeAllSessions(userId: string, mode: 'user' | 'sessions' = 'user'): Promise<void> {
+    const families = await this.d.db.writer
       .updateTable('refresh_tokens')
       .set({ revoked_at: new Date() })
       .where('user_id', '=', userId)
       .where('revoked_at', 'is', null)
+      .returning('family_id')
       .execute();
+    if (mode === 'user') await this.d.revocations.revokeUser(userId);
+    await this.d.revocations.revokeSessions([...new Set(families.map((f) => f.family_id))]);
   }
 
   // ───────────────────────── MFA (TOTP, RFC 6238) ─────────────────────────
@@ -269,7 +315,11 @@ export class AuthService {
       .set({ mfa_secret_enc: this.d.cipher.encrypt(secret, MFA_AAD), mfa_last_timestep: null })
       .where('id', '=', userId)
       .execute();
-    await this.d.audit.recordSafe(ctx, { action: 'auth.mfa_enrollment_started', resourceType: 'user', resourceId: userId });
+    await this.d.audit.recordSafe(ctx, {
+      action: 'auth.mfa_enrollment_started',
+      resourceType: 'user',
+      resourceId: userId,
+    });
     return { secret, otpauthUrl, qrCodeDataUrl: await QRCode.toDataURL(otpauthUrl) };
   }
 
@@ -278,26 +328,39 @@ export class AuthService {
     const user = await this.getUser(userId);
     if (user.mfa_enabled) throw Errors.conflict('MFA_ALREADY_ENABLED', 'MFA is already enabled');
     if (!user.mfa_secret_enc) throw Errors.conflict('MFA_NOT_ENROLLED', 'Start MFA enrolment first');
-    if (!(await this.checkTotp(user, code))) throw Errors.unauthorized('Invalid verification code', 'INVALID_MFA_CODE');
+    if (!(await this.checkTotp(user, code)))
+      throw Errors.unauthorized('Invalid verification code', 'INVALID_MFA_CODE');
     await this.d.db.writer.updateTable('users').set({ mfa_enabled: true }).where('id', '=', userId).execute();
     // Old (password-only) sessions are revoked; the caller continues on a fresh MFA session.
-    await this.revokeAllSessions(userId);
-    await this.d.audit.recordSafe(ctx, { action: 'auth.mfa_enabled', resourceType: 'user', resourceId: userId, metadata: { previousSession: sessionId } });
+    await this.revokeAllSessions(userId, 'sessions');
+    await this.d.revocations.revokeSessions([sessionId]);
+    await this.d.audit.recordSafe(ctx, {
+      action: 'auth.mfa_enabled',
+      resourceType: 'user',
+      resourceId: userId,
+      metadata: { previousSession: sessionId },
+    });
     return this.completeLogin(user, ['pwd', 'otp'], ctx);
   }
 
   async disableMfa(userId: string, code: string, password: string, ctx: RequestCtx): Promise<void> {
     const user = await this.getUser(userId);
-    if (MFA_REQUIRED_ROLES.has(user.role)) throw Errors.forbidden('MFA is mandatory for this role', 'MFA_MANDATORY');
+    if (MFA_REQUIRED_ROLES.has(user.role))
+      throw Errors.forbidden('MFA is mandatory for this role', 'MFA_MANDATORY');
     if (!user.mfa_enabled) throw Errors.conflict('MFA_NOT_ENABLED', 'MFA is not enabled');
-    const ok = (await this.d.passwords.verify(user.password_hash, password)) && (await this.checkTotp(user, code));
+    const ok =
+      (await this.d.passwords.verify(user.password_hash, password)) && (await this.checkTotp(user, code));
     if (!ok) throw Errors.unauthorized('Invalid credentials', 'INVALID_CREDENTIALS');
     await this.d.db.writer
       .updateTable('users')
       .set({ mfa_enabled: false, mfa_secret_enc: null, mfa_last_timestep: null })
       .where('id', '=', userId)
       .execute();
-    await this.d.audit.recordSafe(ctx, { action: 'auth.mfa_disabled', resourceType: 'user', resourceId: userId });
+    await this.d.audit.recordSafe(ctx, {
+      action: 'auth.mfa_disabled',
+      resourceType: 'user',
+      resourceId: userId,
+    });
   }
 
   /** Verifies a TOTP code (±1 step drift) and rejects replays of an already-used time step. */
@@ -310,7 +373,9 @@ export class AuthService {
       .updateTable('users')
       .set({ mfa_last_timestep: result.timeStep })
       .where('id', '=', user.id)
-      .where((eb) => eb.or([eb('mfa_last_timestep', 'is', null), eb('mfa_last_timestep', '<', String(result.timeStep))]))
+      .where((eb) =>
+        eb.or([eb('mfa_last_timestep', 'is', null), eb('mfa_last_timestep', '<', String(result.timeStep))]),
+      )
       .returning('id')
       .executeTakeFirst();
     return Boolean(updated);
@@ -318,7 +383,11 @@ export class AuthService {
 
   // ───────────────────────── helpers ─────────────────────────
 
-  private async completeLogin(user: Pick<User, 'id' | 'role'>, amr: AuthMethod[], ctx: RequestCtx): Promise<TokenPair> {
+  private async completeLogin(
+    user: Pick<User, 'id' | 'role'>,
+    amr: AuthMethod[],
+    ctx: RequestCtx,
+  ): Promise<TokenPair> {
     const familyId = crypto.randomUUID();
     const refreshToken = randomToken();
     await withTransaction(this.d.db.writer, async (tx) => {
@@ -342,12 +411,23 @@ export class AuthService {
         .execute();
       await this.d.audit.record(
         ctx,
-        { action: 'auth.login', resourceType: 'user', resourceId: user.id, actorId: user.id, metadata: { amr } },
+        {
+          action: 'auth.login',
+          resourceType: 'user',
+          resourceId: user.id,
+          actorId: user.id,
+          metadata: { amr },
+        },
         tx,
       );
     });
     this.d.metrics.authEvents.inc({ event: 'login', outcome: 'success' });
-    const accessToken = await this.d.tokens.signAccess({ sub: user.id, role: user.role as UserRole, amr, sid: familyId });
+    const accessToken = await this.d.tokens.signAccess({
+      sub: user.id,
+      role: user.role as UserRole,
+      amr,
+      sid: familyId,
+    });
     return this.pair(accessToken, refreshToken);
   }
 
@@ -362,7 +442,9 @@ export class AuthService {
       .updateTable('users')
       .set({
         failed_login_attempts: lock ? 0 : attempts,
-        locked_until: lock ? new Date(Date.now() + this.d.config.LOCKOUT_MINUTES * 60_000) : user.locked_until,
+        locked_until: lock
+          ? new Date(Date.now() + this.d.config.LOCKOUT_MINUTES * 60_000)
+          : user.locked_until,
       })
       .where('id', '=', user.id)
       .execute();
@@ -383,7 +465,11 @@ export class AuthService {
   }
 
   private async getUser(id: string): Promise<User> {
-    const user = await this.d.db.writer.selectFrom('users').selectAll().where('id', '=', id).executeTakeFirst();
+    const user = await this.d.db.writer
+      .selectFrom('users')
+      .selectAll()
+      .where('id', '=', id)
+      .executeTakeFirst();
     if (!user || user.status !== 'active') throw Errors.unauthorized();
     return user;
   }

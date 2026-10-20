@@ -10,12 +10,24 @@ import { retry, sleep, withTimeout } from '../../lib/retry.js';
  */
 export interface PaymentGateway {
   readonly name: string;
-  createOrder(input: { amountPaise: number; currency: string; receipt: string; idempotencyKey: string }): Promise<{ orderId: string }>;
-  refund(input: { orderId: string; amountPaise: number; idempotencyKey: string }): Promise<{ refundId: string }>;
+  createOrder(input: {
+    amountPaise: number;
+    currency: string;
+    receipt: string;
+    idempotencyKey: string;
+  }): Promise<{ orderId: string }>;
+  refund(input: {
+    orderId: string;
+    amountPaise: number;
+    idempotencyKey: string;
+  }): Promise<{ refundId: string }>;
 }
 
 export class GatewayError extends Error {
-  constructor(message: string, readonly retryable: boolean) {
+  constructor(
+    message: string,
+    readonly retryable: boolean,
+  ) {
     super(message);
     this.name = 'GatewayError';
   }
@@ -71,7 +83,9 @@ export class ResilientPaymentGateway implements PaymentGateway {
       gauge.set(1);
       deps.logger.error({ gateway: inner.name }, 'payment gateway circuit OPEN');
     });
-    this.breaker.on('halfOpen', () => deps.logger.warn({ gateway: inner.name }, 'payment gateway circuit half-open'));
+    this.breaker.on('halfOpen', () =>
+      deps.logger.warn({ gateway: inner.name }, 'payment gateway circuit half-open'),
+    );
     this.breaker.on('close', () => {
       gauge.set(0);
       deps.logger.info({ gateway: inner.name }, 'payment gateway circuit closed');
@@ -85,7 +99,8 @@ export class ResilientPaymentGateway implements PaymentGateway {
         baseMs: 100,
         maxMs: 1_000,
         isRetryable: (err) => !(err instanceof GatewayError) || err.retryable,
-        onRetry: (err, attempt, delay) => this.deps.logger.warn({ err, attempt, delay, label }, 'retrying gateway call'),
+        onRetry: (err, attempt, delay) =>
+          this.deps.logger.warn({ err, attempt, delay, label }, 'retrying gateway call'),
       }),
     ) as Promise<T>;
   }
@@ -105,11 +120,20 @@ export const WEBHOOK_SIGNATURE_HEADER = 'x-mockpay-signature';
 const WEBHOOK_TOLERANCE_SEC = 300;
 
 /** Stripe-style `t=<unix>,v1=<hmac(t.body)>`: authenticity + replay window. */
-export function signWebhook(secret: string, rawBody: string, timestamp = Math.floor(Date.now() / 1000)): string {
+export function signWebhook(
+  secret: string,
+  rawBody: string,
+  timestamp = Math.floor(Date.now() / 1000),
+): string {
   return `t=${timestamp},v1=${hmacSha256Hex(secret, `${timestamp}.${rawBody}`)}`;
 }
 
-export function verifyWebhookSignature(secret: string, rawBody: string, header: string | undefined, nowSec = Math.floor(Date.now() / 1000)): boolean {
+export function verifyWebhookSignature(
+  secret: string,
+  rawBody: string,
+  header: string | undefined,
+  nowSec = Math.floor(Date.now() / 1000),
+): boolean {
   if (!header) return false;
   const parts = Object.fromEntries(header.split(',').map((kv) => kv.split('=', 2) as [string, string]));
   const t = Number(parts.t);

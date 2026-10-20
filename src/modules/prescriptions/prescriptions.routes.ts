@@ -24,14 +24,23 @@ export const prescriptionsRoutes =
           response: { 201: PrescriptionSchema, ...errorResponses },
         },
       },
-      async (req, reply) => reply.code(201).send(await prescriptions.create(req.actor!, req.params.id, req.body, requestCtx(req))),
+      async (req, reply) =>
+        reply
+          .code(201)
+          .send(await prescriptions.create(req.actor!, req.params.id, req.body, requestCtx(req))),
     );
 
     app.get(
       '/:id/prescription',
       {
         config: { permission: 'prescriptions:read_own' },
-        schema: { tags, security, summary: 'Read prescription (audited PHI access)', params: UuidParam, response: { 200: PrescriptionSchema, ...errorResponses } },
+        schema: {
+          tags,
+          security,
+          summary: 'Read prescription (audited PHI access)',
+          params: UuidParam,
+          response: { 200: PrescriptionSchema, ...errorResponses },
+        },
       },
       async (req) => prescriptions.getForConsultation(req.actor!, req.params.id, requestCtx(req)),
     );
@@ -40,7 +49,13 @@ export const prescriptionsRoutes =
       '/:id/prescription/pdf',
       {
         config: { permission: 'prescriptions:read_own' },
-        schema: { tags, security, summary: 'Download prescription PDF', params: UuidParam, produces: ['application/pdf'] },
+        schema: {
+          tags,
+          security,
+          summary: 'Download prescription PDF',
+          params: UuidParam,
+          produces: ['application/pdf'],
+        },
       },
       async (req, reply) => {
         const pdf = await prescriptions.getPdf(req.actor!, req.params.id, requestCtx(req));

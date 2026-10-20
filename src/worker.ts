@@ -6,7 +6,13 @@ import { createContainer, type Container } from './container.js';
 import type { JobPayload } from './jobs/outbox-relay.js';
 import { outboxBacklog, relayOutbox } from './jobs/outbox-relay.js';
 import { expireHolds } from './jobs/hold-expiry.js';
-import { cleanup, ensureAuditPartitions, recentDays, rollupAnalytics, rotateEncryptionKeys } from './jobs/maintenance.js';
+import {
+  cleanup,
+  ensureAuditPartitions,
+  recentDays,
+  rollupAnalytics,
+  rotateEncryptionKeys,
+} from './jobs/maintenance.js';
 import { sendNotification } from './jobs/notifications.js';
 import { QUEUES, type QueueName } from './infra/queue.js';
 import { bullConnectionOptions } from './infra/redis.js';
@@ -20,7 +26,12 @@ function traced<T>(queue: string, job: Job, fn: () => Promise<T>): Promise<T> {
   const parent = propagation.extract(context.active(), carrier ?? {});
   return context.with(parent, () =>
     tracer.startActiveSpan(`job ${queue}:${job.name}`, async (span) => {
-      span.setAttributes({ 'messaging.system': 'bullmq', 'messaging.destination.name': queue, 'job.id': String(job.id), 'job.attempt': job.attemptsMade + 1 });
+      span.setAttributes({
+        'messaging.system': 'bullmq',
+        'messaging.destination.name': queue,
+        'job.id': String(job.id),
+        'job.attempt': job.attemptsMade + 1,
+      });
       try {
         return await fn();
       } catch (err) {
@@ -53,7 +64,8 @@ function processors(c: Container): Record<Exclude<QueueName, 'dead-letter'>, Pro
           return { released: await expireHolds(c) };
         case 'analytics-rollup': {
           const range = (job.data as { from?: string; to?: string }) ?? {};
-          const r = range.from && range.to ? { from: range.from, to: range.to } : recentDays(c.config.APP_TIMEZONE);
+          const r =
+            range.from && range.to ? { from: range.from, to: range.to } : recentDays(c.config.APP_TIMEZONE);
           return rollupAnalytics(c, r.from, r.to);
         }
         case 'cleanup':
@@ -80,8 +92,8 @@ async function main() {
   const config = loadConfig();
   const c = createContainer(config);
   await c.redis.connect();
-  await retry(() => c.storage.ensureBucket(), { retries: 6, baseMs: 500, maxMs: 5_000 }).catch((err: unknown) =>
-    c.logger.error({ err }, 'object storage unavailable; PDF jobs will retry'),
+  await retry(() => c.storage.ensureBucket(), { retries: 6, baseMs: 500, maxMs: 5_000 }).catch(
+    (err: unknown) => c.logger.error({ err }, 'object storage unavailable; PDF jobs will retry'),
   );
   const connection = bullConnectionOptions(config.REDIS_URL);
   const procs = processors(c);
@@ -106,7 +118,13 @@ async function main() {
       // Exhausted all retries -> dead-letter queue for inspection / manual replay.
       if (job && job.attemptsMade >= (job.opts.attempts ?? 1)) {
         c.metrics.jobs.inc({ queue, status: 'dead_lettered' });
-        await c.queues['dead-letter'].add(`${queue}:${job.name}`, { queue, name: job.name, data: job.data, error: err.message, failedAt: new Date().toISOString() });
+        await c.queues['dead-letter'].add(`${queue}:${job.name}`, {
+          queue,
+          name: job.name,
+          data: job.data,
+          error: err.message,
+          failedAt: new Date().toISOString(),
+        });
         if (queue === QUEUES.prescriptionPdf) {
           const ev = (job.data as JobPayload).event;
           if (ev.type === 'prescription.created') await c.prescriptions.markPdfFailed(ev.prescriptionId);

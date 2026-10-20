@@ -1,7 +1,12 @@
 import type { FastifyPluginAsyncZod } from 'fastify-type-provider-zod';
 import { requestCtx } from '../../plugins/types.js';
 import { UuidParam, errorResponses } from '../common/schemas.js';
-import { DoctorSchema, SearchDoctorsQuery, SearchDoctorsResponse, UpsertDoctorProfileBody } from './doctors.schemas.js';
+import {
+  DoctorSchema,
+  SearchDoctorsQuery,
+  SearchDoctorsResponse,
+  UpsertDoctorProfileBody,
+} from './doctors.schemas.js';
 import type { DoctorsService } from './doctors.service.js';
 
 export const doctorsRoutes =
@@ -42,7 +47,12 @@ export const doctorsRoutes =
       '/me',
       {
         config: { permission: 'doctor_profile:manage_own' },
-        schema: { tags, security: [{ bearerAuth: [] }], summary: 'Own doctor profile', response: { 200: DoctorSchema, ...errorResponses } },
+        schema: {
+          tags,
+          security: [{ bearerAuth: [] }],
+          summary: 'Own doctor profile',
+          response: { 200: DoctorSchema, ...errorResponses },
+        },
       },
       async (req) => doctors.getById(req.actor!.id, { includeUnverified: true, fresh: true }),
     );
@@ -51,7 +61,12 @@ export const doctorsRoutes =
       '/:id',
       {
         config: { public: true },
-        schema: { tags, summary: 'Public doctor profile', params: UuidParam, response: { 200: DoctorSchema, ...errorResponses } },
+        schema: {
+          tags,
+          summary: 'Public doctor profile',
+          params: UuidParam,
+          response: { 200: DoctorSchema, ...errorResponses },
+        },
       },
       async (req) => doctors.getById(req.params.id),
     );

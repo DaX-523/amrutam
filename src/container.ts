@@ -21,7 +21,11 @@ import { AvailabilityService } from './modules/availability/availability.service
 import { BookingsService } from './modules/bookings/bookings.service.js';
 import { ConsultationsService } from './modules/consultations/consultations.service.js';
 import { DoctorsService } from './modules/doctors/doctors.service.js';
-import { MockPaymentGateway, ResilientPaymentGateway, type PaymentGateway } from './modules/payments/gateway.js';
+import {
+  MockPaymentGateway,
+  ResilientPaymentGateway,
+  type PaymentGateway,
+} from './modules/payments/gateway.js';
 import { PaymentsService } from './modules/payments/payments.service.js';
 import { PrescriptionsService } from './modules/prescriptions/prescriptions.service.js';
 import { UsersService } from './modules/users/users.service.js';
@@ -67,7 +71,11 @@ export type Container = Infra & Services & { close(): Promise<void> };
 export function createContainer(config: AppConfig, overrides: Partial<Infra> = {}): Container {
   const logger =
     overrides.logger ??
-    createLogger({ level: config.LOG_LEVEL, service: config.SERVICE_NAME, pretty: config.NODE_ENV === 'development' });
+    createLogger({
+      level: config.LOG_LEVEL,
+      service: config.SERVICE_NAME,
+      pretty: config.NODE_ENV === 'development',
+    });
   const metrics = overrides.metrics ?? new Metrics(config.SERVICE_NAME);
   const db =
     overrides.db ??
@@ -97,13 +105,30 @@ export function createContainer(config: AppConfig, overrides: Partial<Infra> = {
   const gateway =
     overrides.gateway ??
     new ResilientPaymentGateway(
-      new MockPaymentGateway({ failureRate: config.MOCK_GATEWAY_FAILURE_RATE, latencyMs: config.MOCK_GATEWAY_LATENCY_MS }),
+      new MockPaymentGateway({
+        failureRate: config.MOCK_GATEWAY_FAILURE_RATE,
+        latencyMs: config.MOCK_GATEWAY_LATENCY_MS,
+      }),
       { logger, metrics },
     );
   const storage = overrides.storage ?? createStorage(config);
   const mailer = overrides.mailer ?? createMailer(config);
 
-  const infra: Infra = { config, logger, metrics, db, redis, queues, cache, cipher, passwords, tokens, gateway, storage, mailer };
+  const infra: Infra = {
+    config,
+    logger,
+    metrics,
+    db,
+    redis,
+    queues,
+    cache,
+    cipher,
+    passwords,
+    tokens,
+    gateway,
+    storage,
+    mailer,
+  };
 
   const audit = new AuditService({ db: db.writer, logger });
   const revocations = new SessionRevocations(redis, config.ACCESS_TOKEN_TTL_SEC, logger);

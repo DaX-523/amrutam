@@ -1,7 +1,11 @@
 import { sql } from 'kysely';
 import { z } from 'zod';
 import type { AppConfig } from '../../config/env.js';
-import { assertTransition, EARLY_START_MINUTES, NO_SHOW_GRACE_MINUTES } from '../../domain/consultation-state.js';
+import {
+  assertTransition,
+  EARLY_START_MINUTES,
+  NO_SHOW_GRACE_MINUTES,
+} from '../../domain/consultation-state.js';
 import type { Actor, RequestCtx } from '../../domain/context.js';
 import { Errors } from '../../domain/errors.js';
 import type { Consultation, ConsultationStatus } from '../../db/types.js';
@@ -37,7 +41,11 @@ export class ConsultationsService {
       .leftJoin('doctors as dd', 'dd.user_id', 'c.doctor_id')
       .leftJoin('payments as pay', 'pay.consultation_id', 'c.id')
       .selectAll('c')
-      .select(['pp.full_name as patient_name', 'dd.display_name as doctor_name', 'pay.status as payment_status']);
+      .select([
+        'pp.full_name as patient_name',
+        'dd.display_name as doctor_name',
+        'pay.status as payment_status',
+      ]);
   }
 
   /** Ownership: patients see their own, doctors their assigned consultations. */
@@ -54,11 +62,20 @@ export class ConsultationsService {
     try {
       this.assertParticipant(actor, row);
     } catch (err) {
-      await this.d.audit.recordSafe(ctx, { action: 'consultation.read', resourceType: 'consultation', resourceId: id, outcome: 'denied' });
+      await this.d.audit.recordSafe(ctx, {
+        action: 'consultation.read',
+        resourceType: 'consultation',
+        resourceId: id,
+        outcome: 'denied',
+      });
       throw err;
     }
     // PHI access is always audited.
-    await this.d.audit.recordSafe(ctx, { action: 'consultation.read', resourceType: 'consultation', resourceId: id });
+    await this.d.audit.recordSafe(ctx, {
+      action: 'consultation.read',
+      resourceType: 'consultation',
+      resourceId: id,
+    });
     return toConsultationDto(row, this.d.cipher);
   }
 
@@ -89,7 +106,10 @@ export class ConsultationsService {
         const { reason: _r, notes: _n, ...rest } = toConsultationDto(r, null);
         return rest;
       }),
-      nextCursor: rows.length > q.limit && last ? encodeCursor({ t: new Date(last.scheduled_at).toISOString(), id: last.id }) : null,
+      nextCursor:
+        rows.length > q.limit && last
+          ? encodeCursor({ t: new Date(last.scheduled_at).toISOString(), id: last.id })
+          : null,
     };
   }
 
@@ -98,19 +118,31 @@ export class ConsultationsService {
       guard: (c) => {
         if (actor.id !== c.doctor_id) throw Errors.notFound('Consultation');
         if (Date.now() < new Date(c.scheduled_at).getTime() - EARLY_START_MINUTES * 60_000) {
-          throw Errors.conflict('TOO_EARLY', `Consultation can start at most ${EARLY_START_MINUTES} minutes early`);
+          throw Errors.conflict(
+            'TOO_EARLY',
+            `Consultation can start at most ${EARLY_START_MINUTES} minutes early`,
+          );
         }
       },
       set: () => ({ started_at: new Date() }),
     });
   }
 
-  async complete(actor: Actor, id: string, notes: string, expectedVersion: number | undefined, ctx: RequestCtx) {
+  async complete(
+    actor: Actor,
+    id: string,
+    notes: string,
+    expectedVersion: number | undefined,
+    ctx: RequestCtx,
+  ) {
     return this.transition(actor, id, 'completed', expectedVersion, ctx, {
       guard: (c) => {
         if (actor.id !== c.doctor_id) throw Errors.notFound('Consultation');
       },
-      set: () => ({ completed_at: new Date(), notes_enc: this.d.cipher.encrypt(notes, CONSULTATION_AAD.notes) }),
+      set: () => ({
+        completed_at: new Date(),
+        notes_enc: this.d.cipher.encrypt(notes, CONSULTATION_AAD.notes),
+      }),
       event: (c) => ({ type: 'consultation.completed', consultationId: c.id }),
     });
   }
@@ -120,7 +152,10 @@ export class ConsultationsService {
       guard: (c) => {
         if (actor.id !== c.doctor_id) throw Errors.notFound('Consultation');
         if (Date.now() < new Date(c.scheduled_at).getTime() + NO_SHOW_GRACE_MINUTES * 60_000) {
-          throw Errors.conflict('TOO_EARLY', `No-show can be recorded ${NO_SHOW_GRACE_MINUTES} minutes after start time`);
+          throw Errors.conflict(
+            'TOO_EARLY',
+            `No-show can be recorded ${NO_SHOW_GRACE_MINUTES} minutes after start time`,
+          );
         }
       },
       set: () => ({}),
@@ -131,26 +166,53 @@ export class ConsultationsService {
    * Cancellation (patient or doctor). Releases the slot and decides on a refund:
    * doctor-initiated -> always refund; patient -> refund if outside the policy window.
    */
-  async cancel(actor: Actor, id: string, reason: string, expectedVersion: number | undefined, ctx: RequestCtx) {
-    const current = await this.d.db.writer.selectFrom('consultations').select(['slot_id', 'doctor_id', 'patient_id']).where('id', '=', id).executeTakeFirst();
+  async cancel(
+    actor: Actor,
+    id: string,
+    reason: string,
+    expectedVersion: number | undefined,
+    ctx: RequestCtx,
+  ) {
+    const current = await this.d.db.writer
+      .selectFrom('consultations')
+      .select(['slot_id', 'doctor_id', 'patient_id'])
+      .where('id', '=', id)
+      .executeTakeFirst();
     if (!current) throw Errors.notFound('Consultation');
     this.assertParticipant(actor, current);
 
     const result = await withTransaction(this.d.db.writer, async (tx) => {
       // Lock order: slot -> consultation -> payment (same as webhook & expiry job).
-      await tx.selectFrom('availability_slots').select('id').where('id', '=', current.slot_id).forUpdate().execute();
+      await tx
+        .selectFrom('availability_slots')
+        .select('id')
+        .where('id', '=', current.slot_id)
+        .forUpdate()
+        .execute();
       const c = await this.lockConsultation(tx, id, expectedVersion);
       assertTransition(c.status, 'cancelled');
-      const payment = await tx.selectFrom('payments').selectAll().where('consultation_id', '=', id).forUpdate().executeTakeFirst();
+      const payment = await tx
+        .selectFrom('payments')
+        .selectAll()
+        .where('consultation_id', '=', id)
+        .forUpdate()
+        .executeTakeFirst();
 
       const byDoctor = actor.id === c.doctor_id;
       const minutesToStart = (new Date(c.scheduled_at).getTime() - Date.now()) / 60_000;
       const refund =
-        payment?.status === 'captured' && (byDoctor || minutesToStart >= this.d.config.CANCELLATION_REFUND_WINDOW_MIN);
+        payment?.status === 'captured' &&
+        (byDoctor || minutesToStart >= this.d.config.CANCELLATION_REFUND_WINDOW_MIN);
 
       const updated = await tx
         .updateTable('consultations')
-        .set({ status: 'cancelled', cancelled_at: new Date(), cancelled_by: actor.id, cancel_reason: reason, version: sql<number>`version + 1` })
+        .set({
+          status: 'cancelled',
+          cancelled_at: new Date(),
+          cancelled_by: actor.id,
+          cancel_reason: reason,
+          version: sql<number>`version + 1`,
+        })
         .where('id', '=', id)
         .returningAll()
         .executeTakeFirstOrThrow();
@@ -159,19 +221,49 @@ export class ConsultationsService {
         // Freed future slot goes back on the market (doctor-cancelled slots get blocked).
         await tx
           .updateTable('availability_slots')
-          .set({ status: byDoctor ? 'blocked' : 'available', held_by: null, hold_expires_at: null, version: sql<number>`version + 1` })
+          .set({
+            status: byDoctor ? 'blocked' : 'available',
+            held_by: null,
+            hold_expires_at: null,
+            version: sql<number>`version + 1`,
+          })
           .where('id', '=', c.slot_id)
           .where('status', 'in', ['held', 'booked'])
           .execute();
       }
       if (payment?.status === 'initiated') {
-        await tx.updateTable('payments').set({ status: 'expired', failure_reason: 'cancelled_before_payment' }).where('id', '=', payment.id).execute();
+        await tx
+          .updateTable('payments')
+          .set({ status: 'expired', failure_reason: 'cancelled_before_payment' })
+          .where('id', '=', payment.id)
+          .execute();
       } else if (refund && payment) {
-        await tx.updateTable('payments').set({ status: 'refund_pending' }).where('id', '=', payment.id).execute();
-        await publishEvent(tx, { type: 'payment', id: payment.id }, { type: 'payment.refund_requested', paymentId: payment.id });
+        await tx
+          .updateTable('payments')
+          .set({ status: 'refund_pending' })
+          .where('id', '=', payment.id)
+          .execute();
+        await publishEvent(
+          tx,
+          { type: 'payment', id: payment.id },
+          { type: 'payment.refund_requested', paymentId: payment.id },
+        );
       }
-      await publishEvent(tx, { type: 'consultation', id }, { type: 'consultation.cancelled', consultationId: id, refund });
-      await this.d.audit.record(ctx, { action: 'consultation.cancelled', resourceType: 'consultation', resourceId: id, metadata: { byRole: actor.role, refund, from: c.status } }, tx);
+      await publishEvent(
+        tx,
+        { type: 'consultation', id },
+        { type: 'consultation.cancelled', consultationId: id, refund },
+      );
+      await this.d.audit.record(
+        ctx,
+        {
+          action: 'consultation.cancelled',
+          resourceType: 'consultation',
+          resourceId: id,
+          metadata: { byRole: actor.role, refund, from: c.status },
+        },
+        tx,
+      );
       return { from: c.status, doctorId: c.doctor_id, updated };
     });
 
@@ -181,10 +273,17 @@ export class ConsultationsService {
   }
 
   private async lockConsultation(tx: Tx, id: string, expectedVersion: number | undefined) {
-    const c = await tx.selectFrom('consultations').selectAll().where('id', '=', id).forUpdate().executeTakeFirst();
+    const c = await tx
+      .selectFrom('consultations')
+      .selectAll()
+      .where('id', '=', id)
+      .forUpdate()
+      .executeTakeFirst();
     if (!c) throw Errors.notFound('Consultation');
     if (expectedVersion !== undefined && c.version !== expectedVersion) {
-      throw Errors.conflict('VERSION_CONFLICT', 'Consultation was modified concurrently; reload and retry', { currentVersion: c.version });
+      throw Errors.conflict('VERSION_CONFLICT', 'Consultation was modified concurrently; reload and retry', {
+        currentVersion: c.version,
+      });
     }
     return c;
   }
@@ -212,7 +311,16 @@ export class ConsultationsService {
         .where('version', '=', c.version)
         .execute();
       if (spec.event) await publishEvent(tx, { type: 'consultation', id }, spec.event(c));
-      await this.d.audit.record(ctx, { action: `consultation.${to}`, resourceType: 'consultation', resourceId: id, metadata: { from: c.status } }, tx);
+      await this.d.audit.record(
+        ctx,
+        {
+          action: `consultation.${to}`,
+          resourceType: 'consultation',
+          resourceId: id,
+          metadata: { from: c.status },
+        },
+        tx,
+      );
       return c.status;
     });
     this.d.metrics.consultationTransitions.inc({ from, to });

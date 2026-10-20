@@ -48,7 +48,8 @@ export async function expireHolds(c: Container, batchSize = 500): Promise<number
       resourceType: 'availability_slot',
       metadata: { slots: rows.length, consultations: rows.filter((r) => r.consultation_id).length },
     });
-    for (const doctorId of new Set(rows.map((r) => r.doctor_id))) await c.cache.invalidate(slotsCacheNs(doctorId));
+    for (const doctorId of new Set(rows.map((r) => r.doctor_id)))
+      await c.cache.invalidate(slotsCacheNs(doctorId));
     c.metrics.bookings.inc({ outcome: 'hold_expired' }, rows.length);
   }
   return rows.length;

@@ -1,6 +1,13 @@
 import { z } from 'zod';
 
-export const ConsultationStatusEnum = z.enum(['pending_payment', 'confirmed', 'in_progress', 'completed', 'cancelled', 'no_show']);
+export const ConsultationStatusEnum = z.enum([
+  'pending_payment',
+  'confirmed',
+  'in_progress',
+  'completed',
+  'cancelled',
+  'no_show',
+]);
 
 export const ConsultationSchema = z
   .object({

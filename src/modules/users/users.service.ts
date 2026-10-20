@@ -26,8 +26,18 @@ export class UsersService {
       .selectFrom('users as u')
       .innerJoin('profiles as p', 'p.user_id', 'u.id')
       .select([
-        'u.id', 'u.email', 'u.role', 'u.status', 'u.mfa_enabled', 'u.created_at',
-        'p.full_name', 'p.phone_enc', 'p.dob_enc', 'p.gender', 'p.city', 'p.consent_version',
+        'u.id',
+        'u.email',
+        'u.role',
+        'u.status',
+        'u.mfa_enabled',
+        'u.created_at',
+        'p.full_name',
+        'p.phone_enc',
+        'p.dob_enc',
+        'p.gender',
+        'p.city',
+        'p.consent_version',
       ])
       .where('u.id', '=', userId)
       .executeTakeFirst();
@@ -59,12 +69,22 @@ export class UsersService {
       set.phone_enc = this.d.cipher.encryptNullable(input.phone, 'profiles.phone');
       set.phone_bidx = input.phone ? blindIndex(this.d.config.BLIND_INDEX_KEY, input.phone) : null;
     }
-    if (input.dateOfBirth !== undefined) set.dob_enc = this.d.cipher.encryptNullable(input.dateOfBirth, 'profiles.dob');
+    if (input.dateOfBirth !== undefined)
+      set.dob_enc = this.d.cipher.encryptNullable(input.dateOfBirth, 'profiles.dob');
     if (Object.keys(set).length) {
       await withTransaction(this.d.db.writer, async (tx) => {
         await tx.updateTable('profiles').set(set).where('user_id', '=', userId).execute();
         // Field names only, never values.
-        await this.d.audit.record(ctx, { action: 'profile.updated', resourceType: 'profile', resourceId: userId, metadata: { fields: Object.keys(input) } }, tx);
+        await this.d.audit.record(
+          ctx,
+          {
+            action: 'profile.updated',
+            resourceType: 'profile',
+            resourceId: userId,
+            metadata: { fields: Object.keys(input) },
+          },
+          tx,
+        );
       });
     }
     return this.getMe(userId);
@@ -120,7 +140,11 @@ export class UsersService {
    * statutory retention period.
    */
   async deleteAccount(userId: string, password: string, ctx: RequestCtx): Promise<void> {
-    const user = await this.d.db.writer.selectFrom('users').selectAll().where('id', '=', userId).executeTakeFirstOrThrow();
+    const user = await this.d.db.writer
+      .selectFrom('users')
+      .selectAll()
+      .where('id', '=', userId)
+      .executeTakeFirstOrThrow();
     if (!(await this.d.passwords.verify(user.password_hash, password))) {
       throw Errors.unauthorized('Invalid credentials', 'INVALID_CREDENTIALS');
     }
@@ -130,7 +154,8 @@ export class UsersService {
       .where((eb) => eb.or([eb('patient_id', '=', userId), eb('doctor_id', '=', userId)]))
       .where('status', 'in', ['pending_payment', 'confirmed', 'in_progress'])
       .executeTakeFirst();
-    if (upcoming) throw Errors.conflict('ACTIVE_CONSULTATIONS', 'Cancel or complete active consultations first');
+    if (upcoming)
+      throw Errors.conflict('ACTIVE_CONSULTATIONS', 'Cancel or complete active consultations first');
 
     await withTransaction(this.d.db.writer, async (tx) => {
       await tx
@@ -150,8 +175,17 @@ export class UsersService {
         .set({ full_name: 'Deleted user', phone_enc: null, phone_bidx: null, dob_enc: null, city: null })
         .where('user_id', '=', userId)
         .execute();
-      await tx.updateTable('refresh_tokens').set({ revoked_at: new Date() }).where('user_id', '=', userId).where('revoked_at', 'is', null).execute();
-      await this.d.audit.record(ctx, { action: 'user.deleted', resourceType: 'user', resourceId: userId }, tx);
+      await tx
+        .updateTable('refresh_tokens')
+        .set({ revoked_at: new Date() })
+        .where('user_id', '=', userId)
+        .where('revoked_at', 'is', null)
+        .execute();
+      await this.d.audit.record(
+        ctx,
+        { action: 'user.deleted', resourceType: 'user', resourceId: userId },
+        tx,
+      );
     });
     await this.d.auth.revokeAllSessions(userId);
   }

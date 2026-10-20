@@ -11,11 +11,14 @@ import { migrations } from './migrations/index.js';
 async function main() {
   const url = process.env.DATABASE_URL;
   if (!url) throw new Error('DATABASE_URL is required');
-  const db = new Kysely<unknown>({ dialect: new PostgresDialect({ pool: new pg.Pool({ connectionString: url, max: 1 }) }) });
+  const db = new Kysely<unknown>({
+    dialect: new PostgresDialect({ pool: new pg.Pool({ connectionString: url, max: 1 }) }),
+  });
   const migrator = new Migrator({ db, provider: { getMigrations: async () => migrations } });
 
   const direction = process.argv[2] === 'down' ? 'down' : 'latest';
-  const { error, results } = direction === 'down' ? await migrator.migrateDown() : await migrator.migrateToLatest();
+  const { error, results } =
+    direction === 'down' ? await migrator.migrateDown() : await migrator.migrateToLatest();
   for (const r of results ?? []) {
     process.stdout.write(`${r.status === 'Success' ? '✔' : '✘'} ${r.direction} ${r.migrationName}\n`);
   }

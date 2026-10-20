@@ -5,12 +5,12 @@ import { BookingResponse, CreateBookingBody } from './bookings.schemas.js';
 import type { BookingsService } from './bookings.service.js';
 
 export const bookingsRoutes =
-  ({ bookings }: { bookings: BookingsService }): FastifyPluginAsyncZod =>
+  ({ bookings, rateLimitMax }: { bookings: BookingsService; rateLimitMax: number }): FastifyPluginAsyncZod =>
   async (app) => {
     app.post(
       '/',
       {
-        config: { permission: 'bookings:create', rateLimit: { max: 20, timeWindow: '1 minute' } },
+        config: { permission: 'bookings:create', rateLimit: { max: rateLimitMax, timeWindow: '1 minute' } },
         schema: {
           tags: ['Bookings'],
           security: [{ bearerAuth: [] }],
@@ -22,6 +22,7 @@ export const bookingsRoutes =
           response: { 201: BookingResponse, 503: ProblemSchema, ...errorResponses },
         },
       },
-      async (req, reply) => reply.code(201).send(await bookings.book(req.actor!.id, req.body, requestCtx(req))),
+      async (req, reply) =>
+        reply.code(201).send(await bookings.book(req.actor!.id, req.body, requestCtx(req))),
     );
   };

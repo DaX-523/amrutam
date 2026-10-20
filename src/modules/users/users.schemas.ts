@@ -22,7 +22,11 @@ export const MeResponse = z
 export const UpdateProfileBody = z
   .object({
     fullName: z.string().trim().min(2).max(120).optional(),
-    phone: z.string().regex(/^\+?[1-9]\d{7,14}$/).nullable().optional(),
+    phone: z
+      .string()
+      .regex(/^\+?[1-9]\d{7,14}$/)
+      .nullable()
+      .optional(),
     dateOfBirth: z.iso.date().nullable().optional(),
     gender: z.enum(['female', 'male', 'other', 'undisclosed']).nullable().optional(),
     city: z.string().trim().max(80).nullable().optional(),

@@ -3,7 +3,10 @@ import type { Container } from '../container.js';
 
 /** Purges expired idempotency records and old relayed outbox rows. */
 export async function cleanup(c: Container) {
-  const idem = await c.db.writer.deleteFrom('idempotency_keys').where('expires_at', '<', sql<Date>`now()`).executeTakeFirst();
+  const idem = await c.db.writer
+    .deleteFrom('idempotency_keys')
+    .where('expires_at', '<', sql<Date>`now()`)
+    .executeTakeFirst();
   const outbox = await c.db.writer
     .deleteFrom('outbox_events')
     .where('published_at', '<', sql<Date>`now() - interval '7 days'`)
@@ -15,7 +18,9 @@ export async function cleanup(c: Container) {
 export async function ensureAuditPartitions(c: Container, monthsAhead = 3) {
   const created: string[] = [];
   for (let i = 0; i <= monthsAhead; i++) {
-    const r = await sql<{ p: string }>`SELECT ensure_audit_partition(now() + make_interval(months => ${i})) AS p`.execute(c.db.writer);
+    const r = await sql<{
+      p: string;
+    }>`SELECT ensure_audit_partition(now() + make_interval(months => ${i})) AS p`.execute(c.db.writer);
     created.push(r.rows[0]!.p);
   }
   return created;
@@ -23,7 +28,11 @@ export async function ensureAuditPartitions(c: Container, monthsAhead = 3) {
 
 export async function rollupAnalytics(c: Container, from: string, to: string) {
   const days: string[] = [];
-  for (let d = new Date(`${from}T00:00:00Z`); d <= new Date(`${to}T00:00:00Z`); d = new Date(d.getTime() + 86_400_000)) {
+  for (
+    let d = new Date(`${from}T00:00:00Z`);
+    d <= new Date(`${to}T00:00:00Z`);
+    d = new Date(d.getTime() + 86_400_000)
+  ) {
     days.push(d.toISOString().slice(0, 10));
   }
   if (days.length > 400) throw new Error('rollup range too large');
@@ -71,7 +80,9 @@ export async function rotateEncryptionKeys(c: Container, batchSize = 500) {
         if (!rotated) continue;
         // Compare-and-swap on the old ciphertext so a concurrent user update is never lost.
         await sql`UPDATE ${sql.table(col.table)} SET ${sql.ref(col.column)} = ${rotated}
-                  WHERE ${sql.ref(col.pk)}::text = ${row.pk} AND ${sql.ref(col.column)} = ${row.value}`.execute(c.db.writer);
+                  WHERE ${sql.ref(col.pk)}::text = ${row.pk} AND ${sql.ref(col.column)} = ${row.value}`.execute(
+          c.db.writer,
+        );
       }
       total += rows.length;
       if (rows.length < batchSize) break;

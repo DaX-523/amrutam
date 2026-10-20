@@ -64,8 +64,18 @@ export class DoctorsService {
       .selectFrom('doctors as d')
       .innerJoin('users as u', 'u.id', 'd.user_id')
       .select([
-        'd.user_id', 'd.display_name', 'd.specialties', 'd.languages', 'd.qualifications', 'd.years_experience',
-        'd.fee_paise', 'd.city', 'd.bio', 'd.rating', 'd.rating_count', 'd.verified_at',
+        'd.user_id',
+        'd.display_name',
+        'd.specialties',
+        'd.languages',
+        'd.qualifications',
+        'd.years_experience',
+        'd.fee_paise',
+        'd.city',
+        'd.bio',
+        'd.rating',
+        'd.rating_count',
+        'd.verified_at',
         sql<Date | null>`(
           SELECT min(s.starts_at) FROM availability_slots s
           WHERE s.doctor_id = d.user_id AND s.status = 'available' AND s.starts_at > now()
@@ -74,7 +84,11 @@ export class DoctorsService {
       .where('u.status', '=', 'active');
   }
 
-  async upsertOwnProfile(userId: string, input: UpsertDoctorProfileInput, ctx: RequestCtx): Promise<DoctorDto> {
+  async upsertOwnProfile(
+    userId: string,
+    input: UpsertDoctorProfileInput,
+    ctx: RequestCtx,
+  ): Promise<DoctorDto> {
     await withTransaction(this.d.db.writer, async (tx) => {
       const existing = await tx
         .selectFrom('doctors')
@@ -102,9 +116,20 @@ export class DoctorsService {
           .where('user_id', '=', userId)
           .execute();
       } else {
-        await tx.insertInto('doctors').values({ user_id: userId, ...values, verified_at: null, verified_by: null }).execute();
+        await tx
+          .insertInto('doctors')
+          .values({ user_id: userId, ...values, verified_at: null, verified_by: null })
+          .execute();
       }
-      await this.d.audit.record(ctx, { action: existing ? 'doctor.profile_updated' : 'doctor.profile_created', resourceType: 'doctor', resourceId: userId }, tx);
+      await this.d.audit.record(
+        ctx,
+        {
+          action: existing ? 'doctor.profile_updated' : 'doctor.profile_created',
+          resourceType: 'doctor',
+          resourceId: userId,
+        },
+        tx,
+      );
     });
     await this.d.cache.invalidate(DOCTORS_CACHE_NS);
     return this.getById(userId, { includeUnverified: true, fresh: true });

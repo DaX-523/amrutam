@@ -40,13 +40,28 @@ export class PrescriptionsService {
   /** Only the treating doctor, only during/after the consultation. One per consultation. */
   async create(actor: Actor, consultationId: string, input: CreatePrescriptionInput, ctx: RequestCtx) {
     const created = await withTransaction(this.d.db.writer, async (tx) => {
-      const c = await tx.selectFrom('consultations').selectAll().where('id', '=', consultationId).forShare().executeTakeFirst();
+      const c = await tx
+        .selectFrom('consultations')
+        .selectAll()
+        .where('id', '=', consultationId)
+        .forShare()
+        .executeTakeFirst();
       if (!c || c.doctor_id !== actor.id) throw Errors.notFound('Consultation');
       if (c.status !== 'in_progress' && c.status !== 'completed') {
-        throw Errors.conflict('INVALID_STATE', 'Prescriptions can only be issued for an in-progress or completed consultation');
+        throw Errors.conflict(
+          'INVALID_STATE',
+          'Prescriptions can only be issued for an in-progress or completed consultation',
+        );
       }
       const contentHash = sha256Hex(
-        canonicalJson({ consultationId, doctorId: c.doctor_id, patientId: c.patient_id, items: input.items, advice: input.advice ?? null, followUpDate: input.followUpDate ?? null }),
+        canonicalJson({
+          consultationId,
+          doctorId: c.doctor_id,
+          patientId: c.patient_id,
+          items: input.items,
+          advice: input.advice ?? null,
+          followUpDate: input.followUpDate ?? null,
+        }),
       );
       const p = await tx
         .insertInto('prescriptions')
@@ -63,31 +78,69 @@ export class PrescriptionsService {
         .onConflict((oc) => oc.column('consultation_id').doNothing())
         .returningAll()
         .executeTakeFirst();
-      if (!p) throw Errors.conflict('PRESCRIPTION_EXISTS', 'A prescription was already issued for this consultation');
-      await publishEvent(tx, { type: 'prescription', id: p.id }, { type: 'prescription.created', prescriptionId: p.id });
-      await this.d.audit.record(ctx, { action: 'prescription.created', resourceType: 'prescription', resourceId: p.id, metadata: { consultationId, items: input.items.length } }, tx);
+      if (!p)
+        throw Errors.conflict(
+          'PRESCRIPTION_EXISTS',
+          'A prescription was already issued for this consultation',
+        );
+      await publishEvent(
+        tx,
+        { type: 'prescription', id: p.id },
+        { type: 'prescription.created', prescriptionId: p.id },
+      );
+      await this.d.audit.record(
+        ctx,
+        {
+          action: 'prescription.created',
+          resourceType: 'prescription',
+          resourceId: p.id,
+          metadata: { consultationId, items: input.items.length },
+        },
+        tx,
+      );
       return p;
     });
     return this.toDto(created);
   }
 
   async getForConsultation(actor: Actor, consultationId: string, ctx: RequestCtx) {
-    const p = await this.d.db.writer.selectFrom('prescriptions').selectAll().where('consultation_id', '=', consultationId).executeTakeFirst();
+    const p = await this.d.db.writer
+      .selectFrom('prescriptions')
+      .selectAll()
+      .where('consultation_id', '=', consultationId)
+      .executeTakeFirst();
     if (!p || (p.patient_id !== actor.id && p.doctor_id !== actor.id)) {
-      await this.d.audit.recordSafe(ctx, { action: 'prescription.read', resourceType: 'consultation', resourceId: consultationId, outcome: p ? 'denied' : 'failure' });
+      await this.d.audit.recordSafe(ctx, {
+        action: 'prescription.read',
+        resourceType: 'consultation',
+        resourceId: consultationId,
+        outcome: p ? 'denied' : 'failure',
+      });
       throw Errors.notFound('Prescription');
     }
-    await this.d.audit.recordSafe(ctx, { action: 'prescription.read', resourceType: 'prescription', resourceId: p.id });
+    await this.d.audit.recordSafe(ctx, {
+      action: 'prescription.read',
+      resourceType: 'prescription',
+      resourceId: p.id,
+    });
     return this.toDto(p);
   }
 
   async getPdf(actor: Actor, consultationId: string, ctx: RequestCtx): Promise<Buffer> {
-    const p = await this.d.db.writer.selectFrom('prescriptions').selectAll().where('consultation_id', '=', consultationId).executeTakeFirst();
+    const p = await this.d.db.writer
+      .selectFrom('prescriptions')
+      .selectAll()
+      .where('consultation_id', '=', consultationId)
+      .executeTakeFirst();
     if (!p || (p.patient_id !== actor.id && p.doctor_id !== actor.id)) throw Errors.notFound('Prescription');
     if (p.pdf_status !== 'ready' || !p.pdf_object_key) {
       throw Errors.conflict('PDF_NOT_READY', `Prescription PDF is ${p.pdf_status}; try again shortly`);
     }
-    await this.d.audit.recordSafe(ctx, { action: 'prescription.pdf_downloaded', resourceType: 'prescription', resourceId: p.id });
+    await this.d.audit.recordSafe(ctx, {
+      action: 'prescription.pdf_downloaded',
+      resourceType: 'prescription',
+      resourceId: p.id,
+    });
     return this.d.storage.get(p.pdf_object_key);
   }
 
@@ -99,7 +152,13 @@ export class PrescriptionsService {
       .innerJoin('profiles as pr', 'pr.user_id', 'p.patient_id')
       .innerJoin('consultations as c', 'c.id', 'p.consultation_id')
       .selectAll('p')
-      .select(['d.display_name', 'd.registration_number', 'd.qualifications', 'pr.full_name as patient_name', 'c.scheduled_at'])
+      .select([
+        'd.display_name',
+        'd.registration_number',
+        'd.qualifications',
+        'pr.full_name as patient_name',
+        'c.scheduled_at',
+      ])
       .where('p.id', '=', prescriptionId)
       .executeTakeFirst();
     if (!row) return 'skipped';
@@ -126,13 +185,22 @@ export class PrescriptionsService {
       .where('id', '=', row.id)
       .execute();
     await withTransaction(this.d.db.writer, (tx) =>
-      publishEvent(tx, { type: 'prescription', id: row.id }, { type: 'prescription.pdf_ready', prescriptionId: row.id }),
+      publishEvent(
+        tx,
+        { type: 'prescription', id: row.id },
+        { type: 'prescription.pdf_ready', prescriptionId: row.id },
+      ),
     );
     return 'rendered';
   }
 
   async markPdfFailed(prescriptionId: string) {
-    await this.d.db.writer.updateTable('prescriptions').set({ pdf_status: 'failed' }).where('id', '=', prescriptionId).where('pdf_status', '=', 'pending').execute();
+    await this.d.db.writer
+      .updateTable('prescriptions')
+      .set({ pdf_status: 'failed' })
+      .where('id', '=', prescriptionId)
+      .where('pdf_status', '=', 'pending')
+      .execute();
   }
 }
 
@@ -149,7 +217,11 @@ function renderPrescriptionPdf(p: {
   id: string;
 }): Promise<Buffer> {
   return new Promise((resolve, reject) => {
-    const doc = new PDFDocument({ size: 'A4', margin: 50, info: { Title: 'Prescription', Author: 'Amrutam' } });
+    const doc = new PDFDocument({
+      size: 'A4',
+      margin: 50,
+      info: { Title: 'Prescription', Author: 'Amrutam' },
+    });
     const chunks: Buffer[] = [];
     doc.on('data', (c: Buffer) => chunks.push(c));
     doc.on('end', () => resolve(Buffer.concat(chunks)));
@@ -162,12 +234,19 @@ function renderPrescriptionPdf(p: {
     doc.text(`Date: ${p.date}`).moveDown();
     doc.fontSize(13).text('Rx').moveDown(0.5);
     p.items.forEach((it, i) => {
-      doc.fontSize(11).text(`${i + 1}. ${it.medicine} — ${it.dosage}, ${it.frequency}, ${it.durationDays} day(s)`);
-      if (it.instructions) doc.fontSize(10).fillColor('#444').text(`   ${it.instructions}`).fillColor('black');
+      doc
+        .fontSize(11)
+        .text(`${i + 1}. ${it.medicine} — ${it.dosage}, ${it.frequency}, ${it.durationDays} day(s)`);
+      if (it.instructions)
+        doc.fontSize(10).fillColor('#444').text(`   ${it.instructions}`).fillColor('black');
     });
     if (p.advice) doc.moveDown().fontSize(12).text('Advice').fontSize(11).text(p.advice);
     if (p.followUpDate) doc.moveDown().text(`Follow-up: ${p.followUpDate}`);
-    doc.moveDown(2).fontSize(8).fillColor('#666').text(`Prescription ID ${p.id} · integrity SHA-256 ${p.contentHash}`);
+    doc
+      .moveDown(2)
+      .fontSize(8)
+      .fillColor('#666')
+      .text(`Prescription ID ${p.id} · integrity SHA-256 ${p.contentHash}`);
     doc.end();
   });
 }

@@ -13,7 +13,12 @@ const DateRange = z.object({
 });
 
 export const adminRoutes =
-  (deps: { admin: AdminService; audit: AuditService; analytics: AnalyticsService; queues: Queues }): FastifyPluginAsyncZod =>
+  (deps: {
+    admin: AdminService;
+    audit: AuditService;
+    analytics: AnalyticsService;
+    queues: Queues;
+  }): FastifyPluginAsyncZod =>
   async (app) => {
     const { admin, audit, analytics, queues } = deps;
     const security = [{ bearerAuth: [] }];
@@ -27,11 +32,20 @@ export const adminRoutes =
           security,
           summary: 'List doctors (e.g. verification queue)',
           querystring: z.object({
-            verified: z.enum(['true', 'false']).transform((v) => v === 'true').optional(),
+            verified: z
+              .enum(['true', 'false'])
+              .transform((v) => v === 'true')
+              .optional(),
             cursor: z.string().max(512).optional(),
             limit: z.coerce.number().int().min(1).max(100).default(20),
           }),
-          response: { 200: z.object({ items: z.array(z.record(z.string(), z.unknown())), nextCursor: z.string().nullable() }), ...errorResponses },
+          response: {
+            200: z.object({
+              items: z.array(z.record(z.string(), z.unknown())),
+              nextCursor: z.string().nullable(),
+            }),
+            ...errorResponses,
+          },
         },
       },
       async (req) => admin.listDoctors(req.query),
@@ -41,7 +55,13 @@ export const adminRoutes =
       '/doctors/:id/verify',
       {
         config: { permission: 'admin:doctors' },
-        schema: { tags: ['Admin'], security, summary: 'Verify a doctor (makes them discoverable/bookable)', params: UuidParam, response: { 200: z.object({ id: z.uuid(), verified: z.boolean() }), ...errorResponses } },
+        schema: {
+          tags: ['Admin'],
+          security,
+          summary: 'Verify a doctor (makes them discoverable/bookable)',
+          params: UuidParam,
+          response: { 200: z.object({ id: z.uuid(), verified: z.boolean() }), ...errorResponses },
+        },
       },
       async (req) => admin.verifyDoctor(req.actor!.id, req.params.id, requestCtx(req)),
     );
@@ -80,7 +100,13 @@ export const adminRoutes =
             cursor: z.string().regex(/^\d+$/).optional(),
             limit: z.coerce.number().int().min(1).max(200).default(50),
           }),
-          response: { 200: z.object({ items: z.array(z.record(z.string(), z.unknown())), nextCursor: z.string().nullable() }), ...errorResponses },
+          response: {
+            200: z.object({
+              items: z.array(z.record(z.string(), z.unknown())),
+              nextCursor: z.string().nullable(),
+            }),
+            ...errorResponses,
+          },
         },
       },
       async (req) => {
@@ -90,7 +116,11 @@ export const adminRoutes =
           from: q.from ? new Date(q.from) : undefined,
           to: q.to ? new Date(q.to) : undefined,
         });
-        await audit.recordSafe(requestCtx(req), { action: 'audit.searched', resourceType: 'audit_log', metadata: { filters: Object.keys(q) } });
+        await audit.recordSafe(requestCtx(req), {
+          action: 'audit.searched',
+          resourceType: 'audit_log',
+          metadata: { filters: Object.keys(q) },
+        });
         return result;
       },
     );
@@ -105,7 +135,12 @@ export const adminRoutes =
           summary: 'Verify audit hash-chain integrity (tamper detection)',
           querystring: z.object({ fromSeq: z.coerce.number().int().min(1).default(1) }),
           response: {
-            200: z.object({ valid: z.boolean(), checked: z.number().int(), firstInvalidSeq: z.string().nullable(), reason: z.string().nullable() }),
+            200: z.object({
+              valid: z.boolean(),
+              checked: z.number().int(),
+              firstInvalidSeq: z.string().nullable(),
+              reason: z.string().nullable(),
+            }),
             ...errorResponses,
           },
         },
@@ -117,7 +152,13 @@ export const adminRoutes =
       '/analytics/overview',
       {
         config: { permission: 'admin:analytics' },
-        schema: { tags: ['Analytics'], security, summary: 'KPIs from daily rollups', querystring: DateRange, response: { 200: z.record(z.string(), z.unknown()), ...errorResponses } },
+        schema: {
+          tags: ['Analytics'],
+          security,
+          summary: 'KPIs from daily rollups',
+          querystring: DateRange,
+          response: { 200: z.record(z.string(), z.unknown()), ...errorResponses },
+        },
       },
       async (req) => analytics.overview(req.query.from, req.query.to),
     );
@@ -135,8 +176,15 @@ export const adminRoutes =
         },
       },
       async (req, reply) => {
-        const job = await queues.maintenance.add('analytics-rollup', { from: req.body.from, to: req.body.to });
-        await audit.recordSafe(requestCtx(req), { action: 'analytics.refresh_requested', resourceType: 'analytics', metadata: req.body });
+        const job = await queues.maintenance.add('analytics-rollup', {
+          from: req.body.from,
+          to: req.body.to,
+        });
+        await audit.recordSafe(requestCtx(req), {
+          action: 'analytics.refresh_requested',
+          resourceType: 'analytics',
+          metadata: req.body,
+        });
         return reply.code(202).send({ jobId: String(job.id), status: 'queued' as const });
       },
     );

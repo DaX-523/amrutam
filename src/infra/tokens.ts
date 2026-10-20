@@ -88,7 +88,13 @@ export class TokenService {
   async verifyAccess(token: string): Promise<AccessClaims | null> {
     const p = await this.verify(token, 'access');
     if (!p) return null;
-    return { sub: p.sub!, role: p.role as UserRole, amr: (p.amr as AuthMethod[]) ?? [], sid: String(p.sid), iat: p.iat ?? 0 };
+    return {
+      sub: p.sub!,
+      role: p.role as UserRole,
+      amr: (p.amr as AuthMethod[]) ?? [],
+      sid: String(p.sid),
+      iat: p.iat ?? 0,
+    };
   }
 
   async verifyMfaChallenge(token: string): Promise<MfaChallengeClaims | null> {
