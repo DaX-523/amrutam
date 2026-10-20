@@ -5,12 +5,12 @@ groups:
       - record: sli:http_requests:rate5m
         expr: sum(rate(http_request_duration_seconds_count{job="api"}[5m]))
       - record: sli:http_errors:rate5m
-        expr: sum(rate(http_request_duration_seconds_count{job="api",status_code=~"5.."}[5m]))
+        expr: sum(rate(http_request_duration_seconds_count{job="api",status_code=~"5.."}[5m])) or vector(0)
       - record: sli:http_error_ratio:rate5m
         expr: sli:http_errors:rate5m / clamp_min(sli:http_requests:rate5m, 1e-9)
       - record: sli:http_error_ratio:rate1h
         expr: |
-          sum(rate(http_request_duration_seconds_count{job="api",status_code=~"5.."}[1h]))
+          (sum(rate(http_request_duration_seconds_count{job="api",status_code=~"5.."}[1h])) or vector(0))
           / clamp_min(sum(rate(http_request_duration_seconds_count{job="api"}[1h])), 1e-9)
       - record: sli:http_read_latency:p95_5m
         expr: histogram_quantile(0.95, sum by (le) (rate(http_request_duration_seconds_bucket{job="api",method="GET"}[5m])))

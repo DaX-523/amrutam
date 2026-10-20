@@ -46,6 +46,12 @@ const authPlugin: FastifyPluginAsync<{ tokens: TokenService; revocations: Sessio
       throw Errors.forbidden();
     }
   });
+
+  // Personalised responses may contain PHI: never let browsers or proxies cache them.
+  app.addHook('onSend', async (request, reply, payload) => {
+    if (request.actor && !reply.hasHeader('cache-control')) void reply.header('cache-control', 'no-store');
+    return payload;
+  });
 };
 
 export default fp(authPlugin, { name: 'auth' });

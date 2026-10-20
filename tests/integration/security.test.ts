@@ -36,9 +36,9 @@ describe('authorization, compliance & hardening', () => {
     const booked = (await book(t, owner.auth, slot.id)).json();
     const id = booked.consultation.id;
 
-    expect((await t.app.inject({ url: `/v1/consultations/${id}`, headers: owner.auth })).statusCode).toBe(
-      200,
-    );
+    const own = await t.app.inject({ url: `/v1/consultations/${id}`, headers: owner.auth });
+    expect(own.statusCode).toBe(200);
+    expect(own.headers['cache-control']).toBe('no-store');
     expect((await t.app.inject({ url: `/v1/consultations/${id}`, headers: intruder.auth })).statusCode).toBe(
       404,
     );
