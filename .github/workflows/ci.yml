@@ -74,7 +74,7 @@ jobs:
       - name: Gitleaks (secrets in history)
         run: docker run --rm -v "$PWD:/repo" zricethezav/gitleaks:v8.24.0 git /repo --config /repo/.gitleaks.toml --redact --verbose
       - name: Trivy IaC misconfiguration scan (Terraform, K8s, Dockerfile)
-        uses: aquasecurity/trivy-action@0.30.0
+        uses: aquasecurity/trivy-action@v0.36.0
         with:
           scan-type: config
           scan-ref: infra
@@ -132,7 +132,7 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
       - name: Trivy image scan (OS + npm packages)
-        uses: aquasecurity/trivy-action@0.30.0
+        uses: aquasecurity/trivy-action@v0.36.0
         with:
           image-ref: amrutam-api:${{ github.sha }}
           severity: CRITICAL,HIGH
