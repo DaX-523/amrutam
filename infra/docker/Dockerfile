@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1.7
 # ── build ─────────────────────────────────────────────────────────────────────
-FROM node:24-alpine AS build
+FROM node:26-alpine AS build
 WORKDIR /app
 RUN apk add --no-cache python3 make g++   # argon2 native build
 COPY package.json package-lock.json ./
@@ -10,7 +10,7 @@ COPY src ./src
 RUN npm run build && npm prune --omit=dev
 
 # ── runtime ───────────────────────────────────────────────────────────────────
-FROM node:24-alpine AS runtime
+FROM node:26-alpine AS runtime
 ENV NODE_ENV=production \
     NODE_OPTIONS="--enable-source-maps --max-old-space-size=384"
 WORKDIR /app
