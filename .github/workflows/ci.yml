@@ -56,7 +56,7 @@ jobs:
         with: { node-version: "${{ env.NODE_VERSION }}", cache: npm }
       - run: npm ci
       - run: npm run test:coverage
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with: { name: coverage, path: coverage/lcov.info, retention-days: 7 }
 
   security:
@@ -167,5 +167,5 @@ jobs:
       #   1. kubectl apply -f release.yaml --selector app.kubernetes.io/name=amrutam-migrate && kubectl wait --for=condition=complete job/amrutam-migrate
       #   2. kubectl apply -f release.yaml
       #   3. kubectl rollout status deploy/amrutam-api deploy/amrutam-worker --timeout=5m (auto-rollback on failure)
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with: { name: release-manifests, path: release.yaml, retention-days: 30 }
