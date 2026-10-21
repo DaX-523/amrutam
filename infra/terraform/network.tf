@@ -1,7 +1,7 @@
 # 3-AZ VPC: public (ALB), private (EKS nodes), database (RDS/ElastiCache, no internet route).
 module "vpc" {
   source  = "terraform-aws-modules/vpc/aws"
-  version = "~> 5.17"
+  version = "~> 6.7"
 
   name = local.name
   cidr = var.vpc_cidr
@@ -29,7 +29,7 @@ module "vpc" {
 # Keep AWS API traffic (S3, KMS, Secrets Manager) off the internet.
 module "vpc_endpoints" {
   source  = "terraform-aws-modules/vpc/aws//modules/vpc-endpoints"
-  version = "~> 5.17"
+  version = "~> 6.7"
 
   vpc_id             = module.vpc.vpc_id
   security_group_ids = [aws_security_group.vpc_endpoints.id]
