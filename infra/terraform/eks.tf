@@ -28,7 +28,7 @@ module "eks" {
 # IRSA role for api/worker pods: least privilege on exactly the resources they use.
 module "app_irsa" {
   source  = "terraform-aws-modules/iam/aws//modules/iam-role-for-service-accounts-eks"
-  version = "~> 5.48"
+  version = "~> 6.8"
 
   role_name = "${local.name}-app"
   oidc_providers = {
