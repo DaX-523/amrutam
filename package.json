@@ -44,7 +44,7 @@
     "fastify-plugin": "^6.0.1",
     "fastify-type-provider-zod": "^7.0.0",
     "ioredis": "^6.0.0",
-    "jose": "^6.2.13",
+    "jose": "^6.2.14",
     "kysely": "^0.29.7",
     "nodemailer": "^10.1.7",
     "opossum": "^10.0.0",
